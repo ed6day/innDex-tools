@@ -40,11 +40,11 @@
   <main class="card">
     <h1>innDex Tools</h1>
     <p>Open the internal RAMS + Safe Start tools hub.</p>
-    <a id="hubLink" href="./public/index.html">Open Tools Hub</a>
+    <a id="hubLink" href="/hub">Open Tools Hub</a>
   </main>
   <script>
     (function setHubLink() {
-      const RENDER_URL = 'https://inndex-tools.onrender.com/';
+      const RENDER_URL = 'https://inndex-tools.onrender.com/hub';
       const link = document.getElementById('hubLink');
       if (!link) return;
       if (window.location.hostname.endsWith('github.io')) {
@@ -54,7 +54,7 @@
         }, 1200);
         return;
       }
-      link.setAttribute('href', '/public/index.html');
+      link.setAttribute('href', '/hub');
     })();
   </script>
 </body>
