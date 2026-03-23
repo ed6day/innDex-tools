@@ -40,7 +40,16 @@
   <main class="card">
     <h1>innDex Tools</h1>
     <p>Open the internal RAMS + Safe Start tools hub.</p>
-    <a href="./public/index.html">Open Tools Hub</a>
+    <a id="hubLink" href="./public/index.html">Open Tools Hub</a>
   </main>
+  <script>
+    (function setHubLink() {
+      const link = document.getElementById('hubLink');
+      if (!link) return;
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const repoBase = window.location.hostname.endsWith('github.io') && parts.length ? `/${parts[0]}` : '';
+      link.setAttribute('href', `${repoBase}/public/index.html`);
+    })();
+  </script>
 </body>
 </html>
