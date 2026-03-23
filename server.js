@@ -218,7 +218,16 @@ function toCsv(rows) {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(express.json({ limit: '100mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
+// Serve top-level homepage and keep the existing hub available at /hub.
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/hub', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ─── RAMS endpoints ───────────────────────────────────────────────────────────
 
