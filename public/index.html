@@ -715,13 +715,11 @@
   // ── Navigation ────────────────────────────────────────────────────────────
 
   const navItems = document.querySelectorAll('.nav-item');
-  const recordsNavItem = document.querySelector('.nav-item[data-view="records"]');
   const iframeMap = {
     rams: document.getElementById('ramsPane'),
     safestart: document.getElementById('safestartPane'),
   };
   const recordsPane = document.getElementById('recordsPane');
-  const isStaticPagesHost = window.location.hostname.endsWith('github.io');
 
   function addMonths(date, months) {
     const d = new Date(date.getTime());
@@ -757,14 +755,6 @@
       recordsPane.classList.remove('active');
 
       if (view === 'records') {
-        if (isStaticPagesHost) {
-          alert('Database records are unavailable on GitHub Pages. Run the Node server locally to use database features.');
-          const fallback = iframeMap.rams;
-          if (fallback) fallback.classList.add('active');
-          document.querySelector('.nav-item[data-view="rams"]')?.classList.add('active');
-          item.classList.remove('active');
-          return;
-        }
         recordsPane.classList.add('active');
         loadDbStats();
         loadRamsRecords(1);
@@ -786,17 +776,7 @@
   const dbDot  = document.getElementById('dbDot');
   const dbTxt  = document.getElementById('dbStatusText');
 
-  if (isStaticPagesHost && recordsNavItem) {
-    recordsNavItem.style.opacity = '0.55';
-    recordsNavItem.title = 'Database features require local Node server';
-  }
-
   async function checkDbStatus() {
-    if (isStaticPagesHost) {
-      dbDot.classList.add('offline');
-      dbTxt.textContent = 'Static mode (DB disabled)';
-      return;
-    }
     try {
       const r = await fetch('/api/stats');
       if (r.ok) {
@@ -815,16 +795,6 @@
   // ── DB stats ───────────────────────────────────────────────────────────────
 
   async function loadDbStats() {
-    if (isStaticPagesHost) {
-      document.getElementById('statsRams').textContent = '—';
-      document.getElementById('statsSS').textContent = '—';
-      document.getElementById('statsReg').textContent = '—';
-      document.getElementById('statsRamsUpdated').textContent = 'Unavailable on GitHub Pages';
-      document.getElementById('statsSSUpdated').textContent = 'Unavailable on GitHub Pages';
-      dbDot.classList.add('offline');
-      dbTxt.textContent = 'Static mode (DB disabled)';
-      return;
-    }
     try {
       const r = await fetch('/api/stats');
       const d = await r.json();
