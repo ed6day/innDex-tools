@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>innDex Tools</title>
+  <style>
+    :root {
+      --bg:      #f0f4fa;
+      --panel:   #ffffff;
+      --sidebar: #0f172a;
+      --sidebar-active: #1d4ed8;
+      --sidebar-hover:  #1e293b;
+      --text:    #1f2937;
+      --muted:   #6b7280;
+      --line:    #dbe3ee;
+      --accent:  #0f62fe;
+      --good:    #0f9d58;
+      --warn:    #d97706;
+      --bad:     #c62828;
+      --shadow:  0 4px 24px rgba(15, 23, 42, 0.10);
+      --sidebar-w: 220px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; font-family: Inter, Arial, sans-serif; background: var(--bg); color: var(--text); }
+
+    /* ── Layout ── */
+    .layout { display: flex; height: 100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--sidebar);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-logo {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sidebar-logo .wordmark { font-size: 18px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
+    .sidebar-logo .sub { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+    .sidebar-nav { flex: 1; padding: 10px 0; overflow-y: auto; }
+    .nav-section { padding: 10px 18px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: rgba(255,255,255,0.3); }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 18px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-left: 3px solid transparent;
+      user-select: none;
+    }
+    .nav-item:hover { background: var(--sidebar-hover); color: #fff; }
+    .nav-item.active { background: rgba(29, 78, 216, 0.35); color: #fff; border-left-color: var(--sidebar-active); }
+    .nav-item .icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+    .sidebar-footer {
+      padding: 14px 18px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+    }
+    .db-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      padding: 10px 18px;
+    }
+    .db-status .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      flex-shrink: 0;
+    }
+    .db-status .dot.offline { background: #ef4444; }
+
+    /* ── Content area ── */
+    .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+
+    /* ── Tool panes (iframes) ── */
+    .tool-pane {
+      flex: 1;
+      display: none;
+      border: none;
+      width: 100%;
+      height: 100%;
+    }
+    .tool-pane.active { display: block; }
+    iframe.tool-pane { border: none; }
+
+    /* ── Records pane ── */
+    #recordsPane {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    #recordsPane.active { display: flex; }
+
+    .records-header {
+      padding: 18px 24px 14px;
+      background: white;
+      border-bottom: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      flex-shrink: 0;
+    }
+    .records-header h1 { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+    .records-header p { font-size: 13px; color: var(--muted); }
+
+    .records-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+    /* Stats row */
+    .db-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .db-stat {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+    .db-stat .s-label { font-size: 12px; color: var(--muted); }
+    .db-stat .s-value { font-size: 26px; font-weight: 700; margin-top: 4px; color: var(--accent); }
+    .db-stat .s-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Sub-tabs */
+    .record-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .record-tab {
+      padding: 9px 18px;
+      border-radius: 999px;
+      background: white;
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .record-tab.active { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+
+    /* Filter panel */
+    .filter-card {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .filter-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .filter-field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1; }
+    .filter-field label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .filter-field input, .filter-field select {
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 13px;
+      background: white;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .filter-field input:focus, .filter-field select:focus { border-color: var(--accent); }
+    .btn-primary {
+      padding: 9px 18px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+    .btn-secondary {
+      padding: 9px 14px;
+      background: #e5e7eb;
+      color: #111827;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+
+    /* Table */
+    .table-card {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .table-info { font-size: 13px; color: var(--muted); }
+    .table-scroll { overflow-x: auto; max-height: calc(100vh - 460px); min-height: 200px; }
+    table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+      z-index: 2;
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #f0f4f8;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    tr:hover td { background: #f8fafc; }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .page-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .page-info { font-size: 13px; color: var(--muted); padding: 0 6px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+    .empty-state p { font-size: 14px; }
+
+    /* Loading spinner */
+    .loading-row td { text-align: center; padding: 32px; color: var(--muted); }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-high   { background: #e8f7ef; color: var(--good); }
+    .badge-medium { background: #fff3e8; color: var(--warn); }
+    .badge-low    { background: #fdecec; color: var(--bad); }
+    .badge-yes    { background: #e8f7ef; color: var(--good); }
+    .badge-no     { background: #f3f4f6; color: #6b7280; }
+
+    @media (max-width: 700px) {
+      :root { --sidebar-w: 0px; }
+      .sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="wordmark">innDex Tools</div>
+      <div class="sub">PME Internal Platform</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">Tools</div>
+      <div class="nav-item active" data-view="rams">
+        <span class="icon">📋</span> RAMS Analyser
+      </div>
+      <div class="nav-item" data-view="safestart">
+        <span class="icon">🛡️</span> Safe Start Analyser
+      </div>
+
+      <div class="nav-section" style="margin-top:10px;">Database</div>
+      <div class="nav-item" data-view="records">
+        <span class="icon">🗄️</span> Records
+      </div>
+    </nav>
+
+    <div class="db-status" id="dbStatus">
+      <span class="dot offline" id="dbDot"></span>
+      <span id="dbStatusText">Connecting…</span>
+    </div>
+
+    <div class="sidebar-footer">PME innDex Tools v1.0</div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- RAMS iframe -->
+    <iframe
+      id="ramsPane"
+      class="tool-pane active"
+      src="/rams_analyser.html"
+      allow="clipboard-write"
+      title="RAMS Analyser"
+    ></iframe>
+
+    <!-- Safe Start iframe -->
+    <iframe
+      id="safestartPane"
+      class="tool-pane"
+      src=""
+      data-src="/safe_start_analyser.html"
+      allow="clipboard-write"
+      title="Safe Start Analyser"
+    ></iframe>
+
+    <!-- Records pane -->
+    <div id="recordsPane">
+      <div class="records-header">
+        <h1>Database Records</h1>
+        <p>View and search all results saved to the shared database across all analysis runs.</p>
+      </div>
+
+      <div class="records-body">
+        <div class="filter-card" style="margin-bottom: 14px;">
+          <div class="filter-row">
+            <div class="filter-field">
+              <label>Project Name</label>
+              <input id="proj-name" type="text" placeholder="Project Name" />
+            </div>
+            <div class="filter-field">
+              <label>Project Code</label>
+              <input id="proj-code" type="text" placeholder="Project Code" />
+            </div>
+            <div class="filter-field">
+              <label>innDex ID</label>
+              <input id="proj-inndex-id" type="text" placeholder="innDex ID" />
+            </div>
+            <div class="filter-field">
+              <label>Project Name on innDex</label>
+              <input id="proj-inndex-name" type="text" placeholder="Project Name on innDex" />
+            </div>
+            <button class="btn-primary" onclick="addProject()">Add Project</button>
+          </div>
+          <div class="small" id="projectAddStatus" style="margin-top:8px; color: var(--muted);"></div>
+        </div>
+
+        <div class="filter-card" style="margin-bottom: 14px;">
+          <div class="filter-row">
+            <div class="filter-field">
+              <label>Report Dataset</label>
+              <select id="report-dataset">
+                <option value="rams">RAMS Sign-ups</option>
+                <option value="rams_register">RAMS Register</option>
+                <option value="safe_starts">Safe Starts</option>
+                <option value="safe_start_attendance">Safe Start Attendance</option>
+                <option value="safe_start_register">Safe Start Register</option>
+              </select>
+            </div>
+            <button class="btn-primary" onclick="exportReport()">Export CSV (Current Filters)</button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="db-stats" id="dbStats">
+          <div class="db-stat">
+            <div class="s-label">RAMS Sign-ups</div>
+            <div class="s-value" id="statsRams">—</div>
+            <div class="s-sub" id="statsRamsUpdated">Loading…</div>
+          </div>
+          <div class="db-stat">
+            <div class="s-label">Safe Starts</div>
+            <div class="s-value" id="statsSS">—</div>
+            <div class="s-sub" id="statsSSUpdated">Loading…</div>
+          </div>
+          <div class="db-stat">
+            <div class="s-label">Register Entries</div>
+            <div class="s-value" id="statsReg">—</div>
+            <div class="s-sub">Safe Start attendees</div>
+          </div>
+        </div>
+
+        <!-- Sub-tabs -->
+        <div class="record-tabs">
+          <button class="record-tab active" data-record-tab="rams-records">RAMS Sign-ups</button>
+          <button class="record-tab" data-record-tab="rams-register-records">RAMS register</button>
+          <button class="record-tab" data-record-tab="ss-records">Safe Starts</button>
+          <button class="record-tab" data-record-tab="ss-attendance-records">Safe Start Attendance</button>
+          <button class="record-tab" data-record-tab="ss-register">Safe Start Register</button>
+        </div>
+
+        <!-- ── RAMS Records ── -->
+        <div id="rams-records" class="record-view">
+          <div class="filter-card">
+            <div class="filter-row">
+              <div class="filter-field">
+                <label>Search people or RAMS</label>
+                <input id="rr-search" type="text" placeholder="Type a name, employer, job role, RAMS title or document number" />
+              </div>
+              <div class="filter-field">
+                <label>Filter by RAMS revision</label>
+                <select id="rr-revision">
+                  <option value="">All revisions</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label>Review date cutoff</label>
+                <input id="rr-review-date" type="date" />
+              </div>
+              <div class="filter-field">
+                <label>Review status</label>
+                <select id="rr-review-status">
+                  <option value="">All</option>
+                  <option value="in">In date</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="loadRamsRecords(1)">Search</button>
+              <button class="btn-secondary" onclick="clearRamsFilters()">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <span class="table-info" id="rr-info">—</span>
+            </div>
+            <div class="table-scroll">
+              <table id="rr-table">
+                <thead>
+                  <tr>
+                    <th>Person Name</th>
+                    <th>Matched Site Name</th>
+                    <th>Match Method</th>
+                    <th>Job Role</th>
+                    <th>Employer</th>
+                    <th>Attendance Source Type</th>
+                    <th>Attendance Date</th>
+                    <th>RAMS Title</th>
+                    <th>Document Number</th>
+                    <th>Revision</th>
+                    <th>Briefed By</th>
+                    <th>Briefing Date Time</th>
+                    <th>Review Status</th>
+                    <th>Source File</th>
+                  </tr>
+                </thead>
+                <tbody id="rr-body">
+                  <tr class="loading-row"><td colspan="14">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination" id="rr-pages"></div>
+          </div>
+        </div>
+
+        <!-- ── RAMS Register ── -->
+        <div id="rams-register-records" class="record-view" style="display:none;">
+          <div class="filter-card">
+            <div class="filter-row">
+              <div class="filter-field">
+                <label>Search people or RAMS</label>
+                <input id="rrr-search" type="text" placeholder="Type a name, employer, job role, RAMS title or document number" />
+              </div>
+              <div class="filter-field">
+                <label>Filter by RAMS revision</label>
+                <select id="rrr-revision">
+                  <option value="">All revisions</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label>Review date cutoff</label>
+                <input id="rrr-review-date" type="date" />
+              </div>
+              <div class="filter-field">
+                <label>Review status</label>
+                <select id="rrr-review-status">
+                  <option value="">All</option>
+                  <option value="in">In date</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="loadRamsRegisterRecords(1)">Search</button>
+              <button class="btn-secondary" onclick="clearRamsRegisterFilters()">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <span class="table-info" id="rrr-info">—</span>
+            </div>
+            <div class="table-scroll">
+              <table id="rrr-table">
+                <thead>
+                  <tr>
+                    <th>Document Number</th>
+                    <th>RAMS Title</th>
+                    <th>Revision</th>
+                    <th>Company</th>
+                    <th>Uploaded By</th>
+                    <th>Uploaded Date</th>
+                    <th>Status</th>
+                    <th>Archived</th>
+                    <th>Approved By</th>
+                    <th>Approved By Date</th>
+                    <th>People Signed Up</th>
+                    <th>Number of Briefings</th>
+                    <th>Date First Briefed</th>
+                    <th>Date Last Briefed</th>
+                    <th>Referenced From Files</th>
+                  </tr>
+                </thead>
+                <tbody id="rrr-body">
+                  <tr class="loading-row"><td colspan="15">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination" id="rrr-pages"></div>
+          </div>
+        </div>
+
+        <!-- ── Safe Starts ── -->
+        <div id="ss-records" class="record-view" style="display:none;">
+          <div class="filter-card">
+            <div class="filter-row">
+              <div class="filter-field">
+                <label>Project</label>
+                <input id="ss-project" type="text" placeholder="Search project…" />
+              </div>
+              <div class="filter-field">
+                <label>Date</label>
+                <select id="ss-date">
+                  <option value="">All parsed Safe Start dates</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="loadSSRecords(1)">Search</button>
+              <button class="btn-secondary" onclick="clearSSFilters()">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <span class="table-info" id="ss-info">—</span>
+            </div>
+            <div class="table-scroll">
+              <table id="ss-table">
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Safe Start No</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Project</th>
+                    <th>Employer</th>
+                    <th>Submitted By</th>
+                    <th>Attendee Count</th>
+                    <th>Confidence</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="ss-body">
+                  <tr class="loading-row"><td colspan="10">Search to load records.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination" id="ss-pages"></div>
+          </div>
+        </div>
+
+        <!-- ── Safe Start Attendance ── -->
+        <div id="ss-attendance-records" class="record-view" style="display:none;">
+          <div class="filter-card">
+            <div class="filter-row">
+              <div class="filter-field">
+                <label>Project</label>
+                <input id="ssatt-project" type="text" placeholder="Search project…" />
+              </div>
+              <div class="filter-field">
+                <label>Date</label>
+                <select id="ssatt-date">
+                  <option value="">All parsed Safe Start dates</option>
+                </select>
+              </div>
+              <div class="filter-field" style="min-width: 260px;">
+                <label class="toggle-wrap"><input type="checkbox" id="ssatt-zero-only" /> Show only people with zero Safe Starts</label>
+              </div>
+              <button class="btn-primary" onclick="loadSSAttendanceRecords(1)">Search</button>
+              <button class="btn-secondary" onclick="clearSSAttendanceFilters()">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <span class="table-info" id="ssatt-info">—</span>
+            </div>
+            <div class="table-scroll">
+              <table id="ssatt-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Project</th>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th>Job Role</th>
+                    <th>In Time</th>
+                    <th>Out Time</th>
+                    <th>Safe Starts Completed</th>
+                    <th>Match Method</th>
+                  </tr>
+                </thead>
+                <tbody id="ssatt-body">
+                  <tr class="loading-row"><td colspan="9">Search to load records.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination" id="ssatt-pages"></div>
+          </div>
+        </div>
+
+        <!-- ── Safe Start Register ── -->
+        <div id="ss-register" class="record-view" style="display:none;">
+          <div class="filter-card">
+            <div class="filter-row">
+              <div class="filter-field">
+                <label>Project</label>
+                <input id="reg-project" type="text" placeholder="Search project…" />
+              </div>
+              <div class="filter-field">
+                <label>Date</label>
+                <select id="reg-date">
+                  <option value="">All parsed Safe Start dates</option>
+                </select>
+              </div>
+              <button class="btn-primary" onclick="loadRegRecords(1)">Search</button>
+              <button class="btn-secondary" onclick="clearRegFilters()">Clear</button>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <span class="table-info" id="reg-info">—</span>
+            </div>
+            <div class="table-scroll">
+              <table id="reg-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Project</th>
+                    <th>Safe Start No</th>
+                    <th>Name</th>
+                    <th>Employer</th>
+                    <th>Matched to Excel</th>
+                  </tr>
+                </thead>
+                <tbody id="reg-body">
+                  <tr class="loading-row"><td colspan="6">Search to load records.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination" id="reg-pages"></div>
+          </div>
+        </div>
+
+      </div><!-- /records-body -->
+    </div><!-- /recordsPane -->
+
+  </main>
+</div>
+
+<script>
+  // ── Navigation ────────────────────────────────────────────────────────────
+
+  const navItems = document.querySelectorAll('.nav-item');
+  const iframeMap = {
+    rams: document.getElementById('ramsPane'),
+    safestart: document.getElementById('safestartPane'),
+  };
+  const recordsPane = document.getElementById('recordsPane');
+
+  function addMonths(date, months) {
+    const d = new Date(date.getTime());
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + months);
+    if (d.getDate() < day) d.setDate(0);
+    return d;
+  }
+
+  function toInputDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function defaultRamsReviewDate() {
+    return toInputDate(addMonths(new Date(), -3));
+  }
+
+  // Match the default behaviour in the RAMS analyser (3 months lookback).
+  document.getElementById('rr-review-date').value = defaultRamsReviewDate();
+  document.getElementById('rrr-review-date').value = defaultRamsReviewDate();
+
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const view = item.dataset.view;
+      navItems.forEach(n => n.classList.remove('active'));
+      item.classList.add('active');
+
+      // Hide all
+      Object.values(iframeMap).forEach(el => el.classList.remove('active'));
+      recordsPane.classList.remove('active');
+
+      if (view === 'records') {
+        recordsPane.classList.add('active');
+        loadDbStats();
+        loadRamsRecords(1);
+      } else {
+        const el = iframeMap[view];
+        // Lazy-load when src is empty or still on the hub URL.
+        if (el && el.dataset.src) {
+          const currentSrcAttr = el.getAttribute('src') || '';
+          const shouldLoad = !currentSrcAttr || currentSrcAttr === window.location.pathname || currentSrcAttr === '/';
+          if (shouldLoad) el.src = el.dataset.src;
+        }
+        if (el) el.classList.add('active');
+      }
+    });
+  });
+
+  // ── DB status check ────────────────────────────────────────────────────────
+
+  const dbDot  = document.getElementById('dbDot');
+  const dbTxt  = document.getElementById('dbStatusText');
+
+  async function checkDbStatus() {
+    try {
+      const r = await fetch('/api/stats');
+      if (r.ok) {
+        dbDot.classList.remove('offline');
+        dbTxt.textContent = 'Database online';
+      } else {
+        throw new Error();
+      }
+    } catch {
+      dbDot.classList.add('offline');
+      dbTxt.textContent = 'DB unavailable';
+    }
+  }
+  checkDbStatus();
+
+  // ── DB stats ───────────────────────────────────────────────────────────────
+
+  async function loadDbStats() {
+    try {
+      const r = await fetch('/api/stats');
+      const d = await r.json();
+      document.getElementById('statsRams').textContent    = d.ramsSignups.toLocaleString();
+      document.getElementById('statsSS').textContent      = d.safeStarts.toLocaleString();
+      document.getElementById('statsReg').textContent     = d.safeStartRegister.toLocaleString();
+      document.getElementById('statsRamsUpdated').textContent = d.ramsLastUpdated ? `Last: ${fmtDate(d.ramsLastUpdated)}` : 'No data yet';
+      document.getElementById('statsSSUpdated').textContent   = d.ssLastUpdated   ? `Last: ${fmtDate(d.ssLastUpdated)}`   : 'No data yet';
+      dbDot.classList.remove('offline');
+      dbTxt.textContent = 'Database online';
+      loadProjectList();
+      loadRamsRevisionOptions();
+      loadSafeStartDateOptions();
+    } catch(e) {
+      dbDot.classList.add('offline');
+      dbTxt.textContent = 'DB unavailable';
+    }
+  }
+
+  function fmtDate(str) {
+    if (!str) return '—';
+    try {
+      return new Date(str + 'Z').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    } catch { return str; }
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+
+  function confidenceBadge(v) {
+    const cls = v === 'High' ? 'badge-high' : v === 'Medium' ? 'badge-medium' : v === 'Low' ? 'badge-low' : '';
+    return `<span class="badge ${cls}">${esc(v)}</span>`;
+  }
+
+  function matchedBadge(v) {
+    const cls = /yes/i.test(v) ? 'badge-yes' : 'badge-no';
+    return `<span class="badge ${cls}">${esc(v)}</span>`;
+  }
+
+  // ── Record tabs ────────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.record-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.record-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.record-view').forEach(v => v.style.display = 'none');
+      btn.classList.add('active');
+      const target = btn.dataset.recordTab;
+      document.getElementById(target).style.display = '';
+      if (target === 'rams-records') loadRamsRecords(1);
+      if (target === 'rams-register-records') loadRamsRegisterRecords(1);
+      if (target === 'ss-records') loadSSRecords(1);
+      if (target === 'ss-attendance-records') loadSSAttendanceRecords(1);
+      if (target === 'ss-register') loadRegRecords(1);
+    });
+  });
+
+  // ── Pagination helper ─────────────────────────────────────────────────────
+
+  function renderPagination(containerId, total, page, pageSize, loadFn) {
+    const container = document.getElementById(containerId);
+    const totalPages = Math.ceil(total / pageSize);
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="${loadFn}(${page - 1})">‹ Prev</button>`;
+    const range = [];
+    for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) range.push(p);
+    if (range[0] > 1) html += `<button class="page-btn" onclick="${loadFn}(1)">1</button>` + (range[0] > 2 ? '<span class="page-info">…</span>' : '');
+    range.forEach(p => {
+      html += `<button class="page-btn ${p === page ? 'active' : ''}" onclick="${loadFn}(${p})">${p}</button>`;
+    });
+    if (range[range.length-1] < totalPages) html += (range[range.length-1] < totalPages - 1 ? '<span class="page-info">…</span>' : '') + `<button class="page-btn" onclick="${loadFn}(${totalPages})">${totalPages}</button>`;
+    html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="${loadFn}(${page + 1})">Next ›</button>`;
+    html += `<span class="page-info">Page ${page} of ${totalPages} (${total.toLocaleString()} rows)</span>`;
+    container.innerHTML = html;
+  }
+
+  // ── RAMS Records ──────────────────────────────────────────────────────────
+
+  let rrPage = 1;
+
+  async function loadRamsRecords(page) {
+    rrPage = page || 1;
+    const q       = document.getElementById('rr-search').value.trim();
+    const revision = document.getElementById('rr-revision').value.trim();
+    const reviewDate = document.getElementById('rr-review-date').value;
+    const reviewStatus = document.getElementById('rr-review-status').value;
+    const params  = new URLSearchParams({ page: rrPage, pageSize: 100, view: 'signups' });
+    if (q) params.set('q', q);
+    if (revision) params.set('revision', revision);
+    if (reviewDate) params.set('reviewDate', reviewDate);
+    if (reviewStatus) params.set('reviewStatus', reviewStatus);
+
+    const tbody = document.getElementById('rr-body');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="14">Loading…</td></tr>';
+
+    try {
+      const r = await fetch(`/api/rams/records?${params}`);
+      const d = await r.json();
+      document.getElementById('rr-info').textContent = `${d.total.toLocaleString()} records`;
+
+      if (!d.rows.length) {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="14">No records found.</td></tr>';
+        document.getElementById('rr-pages').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = d.rows.map(row => `
+        <tr>
+          <td title="${esc(row.person_name)}">${esc(row.person_name)}</td>
+          <td>${esc(row.matched_site_name)}</td>
+          <td>${esc(row.match_method)}</td>
+          <td>${esc(row.job_role)}</td>
+          <td>${esc(row.employer)}</td>
+          <td>${esc(row.attendance_source_type)}</td>
+          <td>${esc(row.attendance_date)}</td>
+          <td title="${esc(row.rams_title)}">${esc(row.rams_title)}</td>
+          <td>${esc(row.document_number)}</td>
+          <td>${esc(row.revision)}</td>
+          <td>${esc(row.briefed_by)}</td>
+          <td>${esc(row.briefing_date_time)}</td>
+          <td>${row.review_status === 'Expired'
+            ? `<span style="color:#9f1239;font-weight:700;">Expired</span>`
+            : `<span style="color:#166534;font-weight:600;">${esc(row.review_status)}</span>`}</td>
+          <td title="${esc(row.source_file)}">${esc(row.source_file)}</td>
+        </tr>
+      `).join('');
+
+      renderPagination('rr-pages', d.total, rrPage, 100, 'loadRamsRecords');
+    } catch(e) {
+      tbody.innerHTML = `<tr class="loading-row"><td colspan="14">Error: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function clearRamsFilters() {
+    document.getElementById('rr-search').value   = '';
+    document.getElementById('rr-revision').value = '';
+    document.getElementById('rr-review-date').value = defaultRamsReviewDate();
+    document.getElementById('rr-review-status').value = '';
+    loadRamsRecords(1);
+  }
+
+  // ── RAMS Register Records ───────────────────────────────────────────────
+
+  let rrrPage = 1;
+
+  async function loadRamsRegisterRecords(page) {
+    rrrPage = page || 1;
+    const q = document.getElementById('rrr-search').value.trim();
+    const revision = document.getElementById('rrr-revision').value.trim();
+    const reviewDate = document.getElementById('rrr-review-date').value;
+    const reviewStatus = document.getElementById('rrr-review-status').value;
+    const params  = new URLSearchParams({ page: rrrPage, pageSize: 100, view: 'register' });
+    if (q) params.set('q', q);
+    if (revision) params.set('revision', revision);
+    if (reviewDate) params.set('reviewDate', reviewDate);
+    if (reviewStatus) params.set('reviewStatus', reviewStatus);
+
+    const tbody = document.getElementById('rrr-body');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="15">Loading…</td></tr>';
+
+    try {
+      const r = await fetch(`/api/rams/records?${params}`);
+      const d = await r.json();
+      document.getElementById('rrr-info').textContent = `${d.total.toLocaleString()} records`;
+
+      if (!d.rows.length) {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="15">No records found.</td></tr>';
+        document.getElementById('rrr-pages').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = d.rows.map(row => `
+        <tr>
+          <td title="${esc(row.document_number)}">${esc(row.document_number)}</td>
+          <td>${esc(row.rams_title)}</td>
+          <td>${esc(row.revision)}</td>
+          <td>${esc(row.company)}</td>
+          <td>${esc(row.uploaded_by)}</td>
+          <td>${esc(row.uploaded_date)}</td>
+          <td>${esc(row.status)}</td>
+          <td>${esc(row.archived)}</td>
+          <td>${esc(row.approved_by)}</td>
+          <td>${esc(row.approved_by_date)}</td>
+          <td style="text-align:center;">${esc(row.people_signed_up)}</td>
+          <td style="text-align:center;">${esc(row.number_of_briefings)}</td>
+          <td>${esc(row.date_first_briefed)}</td>
+          <td>${esc(row.date_last_briefed)}</td>
+          <td title="${esc(row.referenced_from_files)}">${esc(row.referenced_from_files)}</td>
+        </tr>
+      `).join('');
+
+      renderPagination('rrr-pages', d.total, rrrPage, 100, 'loadRamsRegisterRecords');
+    } catch(e) {
+      tbody.innerHTML = `<tr class="loading-row"><td colspan="15">Error: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function clearRamsRegisterFilters() {
+    document.getElementById('rrr-search').value   = '';
+    document.getElementById('rrr-revision').value = '';
+    document.getElementById('rrr-review-date').value = defaultRamsReviewDate();
+    document.getElementById('rrr-review-status').value = '';
+    loadRamsRegisterRecords(1);
+  }
+
+  // ── Safe Start Records ────────────────────────────────────────────────────
+
+  let ssPage = 1;
+
+  async function loadSSRecords(page) {
+    ssPage = page || 1;
+    const project = document.getElementById('ss-project').value.trim();
+    const date    = document.getElementById('ss-date').value;
+    const params  = new URLSearchParams({ page: ssPage, pageSize: 100, view: 'safestarts' });
+    if (project) params.set('project', project);
+    if (date) params.set('date', date);
+
+    const tbody = document.getElementById('ss-body');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="10">Loading…</td></tr>';
+
+    try {
+      const r = await fetch(`/api/safestart/records?${params}`);
+      const d = await r.json();
+      document.getElementById('ss-info').textContent = `${d.total.toLocaleString()} records`;
+
+      if (!d.rows.length) {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="10">No records found.</td></tr>';
+        document.getElementById('ss-pages').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = d.rows.map(row => `
+        <tr>
+          <td title="${esc(row.source_file)}">${esc(row.source_file)}</td>
+          <td>${esc(row.safe_start_no)}</td>
+          <td>${esc(row.date)}</td>
+          <td>${esc(row.time)}</td>
+          <td title="${esc(row.project)}">${esc(row.project)}</td>
+          <td>${esc(row.employer)}</td>
+          <td>${esc(row.submitted_by)}</td>
+          <td style="text-align:center;">${esc(row.attendee_count)}</td>
+          <td>${confidenceBadge(row.confidence)}</td>
+          <td title="${esc(row.notes)}">${esc(row.notes)}</td>
+        </tr>
+      `).join('');
+
+      renderPagination('ss-pages', d.total, ssPage, 100, 'loadSSRecords');
+    } catch(e) {
+      tbody.innerHTML = `<tr class="loading-row"><td colspan="10">Error: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function clearSSFilters() {
+    document.getElementById('ss-project').value = '';
+    document.getElementById('ss-date').value = '';
+    loadSSRecords(1);
+  }
+
+  // ── Safe Start Attendance ───────────────────────────────────────────────
+
+  let ssattPage = 1;
+
+  async function loadSSAttendanceRecords(page) {
+    ssattPage = page || 1;
+    const project = document.getElementById('ssatt-project').value.trim();
+    const date = document.getElementById('ssatt-date').value;
+    const zeroOnly = document.getElementById('ssatt-zero-only').checked;
+
+    const params = new URLSearchParams({ page: ssattPage, pageSize: 100, view: 'attendance' });
+    if (project) params.set('project', project);
+    if (date) params.set('date', date);
+    if (zeroOnly) params.set('zeroOnly', '1');
+
+    const tbody = document.getElementById('ssatt-body');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="9">Loading…</td></tr>';
+
+    try {
+      const r = await fetch(`/api/safestart/records?${params}`);
+      const d = await r.json();
+      document.getElementById('ssatt-info').textContent = `${d.total.toLocaleString()} records`;
+
+      if (!d.rows.length) {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="9">No records found.</td></tr>';
+        document.getElementById('ssatt-pages').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = d.rows.map(row => `
+        <tr>
+          <td>${esc(row.date)}</td>
+          <td>${esc(row.project)}</td>
+          <td>${esc(row.name)}</td>
+          <td>${esc(row.company)}</td>
+          <td>${esc(row.job_role)}</td>
+          <td>${esc(row.in_time)}</td>
+          <td>${esc(row.out_time)}</td>
+          <td style="text-align:center;">${esc(row.safe_start_count)}</td>
+          <td>${esc(row.match_method)}</td>
+        </tr>
+      `).join('');
+
+      renderPagination('ssatt-pages', d.total, ssattPage, 100, 'loadSSAttendanceRecords');
+    } catch(e) {
+      tbody.innerHTML = `<tr class="loading-row"><td colspan="9">Error: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function clearSSAttendanceFilters() {
+    document.getElementById('ssatt-project').value = '';
+    document.getElementById('ssatt-date').value = '';
+    document.getElementById('ssatt-zero-only').checked = false;
+    loadSSAttendanceRecords(1);
+  }
+
+  // ── Safe Start Register ───────────────────────────────────────────────────
+
+  let regPage = 1;
+
+  async function loadRegRecords(page) {
+    regPage = page || 1;
+    const project = document.getElementById('reg-project').value.trim();
+    const date = document.getElementById('reg-date').value;
+    const params  = new URLSearchParams({ page: regPage, pageSize: 100, view: 'register' });
+    if (project) params.set('project', project);
+    if (date) params.set('date', date);
+
+    const tbody = document.getElementById('reg-body');
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="6">Loading…</td></tr>';
+
+    try {
+      const r = await fetch(`/api/safestart/records?${params}`);
+      const d = await r.json();
+      document.getElementById('reg-info').textContent = `${d.total.toLocaleString()} records`;
+
+      if (!d.rows.length) {
+        tbody.innerHTML = '<tr class="loading-row"><td colspan="6">No records found.</td></tr>';
+        document.getElementById('reg-pages').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = d.rows.map(row => `
+        <tr>
+          <td>${esc(row.date)}</td>
+          <td title="${esc(row.project)}">${esc(row.project)}</td>
+          <td>${esc(row.safe_start_no)}</td>
+          <td>${esc(row.person_name)}</td>
+          <td>${esc(row.employer)}</td>
+          <td>${matchedBadge(row.matched_to_excel)}</td>
+        </tr>
+      `).join('');
+
+      renderPagination('reg-pages', d.total, regPage, 100, 'loadRegRecords');
+    } catch(e) {
+      tbody.innerHTML = `<tr class="loading-row"><td colspan="6">Error: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function clearRegFilters() {
+    document.getElementById('reg-project').value = '';
+    document.getElementById('reg-date').value = '';
+    loadRegRecords(1);
+  }
+
+  // ── Dropdown population (revisions/dates) ───────────────────────────────
+
+  async function loadRamsRevisionOptions() {
+    try {
+      const resp = await fetch('/api/rams/revisions');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const revisions = data.revisions || [];
+
+      const rrSel = document.getElementById('rr-revision');
+      const rrrSel = document.getElementById('rrr-revision');
+      if (rrSel) rrSel.innerHTML = '<option value="">All revisions</option>' + revisions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+      if (rrrSel) rrrSel.innerHTML = '<option value="">All revisions</option>' + revisions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    } catch { /* noop */ }
+  }
+
+  async function loadSafeStartDateOptions() {
+    try {
+      const resp = await fetch('/api/safestart/dates');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const dates = data.dates || [];
+
+      const ssSel = document.getElementById('ss-date');
+      const ssattSel = document.getElementById('ssatt-date');
+      const regSel = document.getElementById('reg-date');
+      if (ssSel) ssSel.innerHTML = '<option value="">All parsed Safe Start dates</option>' + dates.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+      if (ssattSel) ssattSel.innerHTML = '<option value="">All parsed Safe Start dates</option>' + dates.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+      if (regSel) regSel.innerHTML = '<option value="">All parsed Safe Start dates</option>' + dates.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    } catch { /* noop */ }
+  }
+
+  async function loadProjectList() {
+    try {
+      const resp = await fetch('/api/projects');
+      if (!resp.ok) return;
+      await resp.json();
+    } catch (_e) {
+      // noop
+    }
+  }
+
+  async function addProject() {
+    const statusEl = document.getElementById('projectAddStatus');
+    const payload = {
+      project_name: document.getElementById('proj-name').value.trim(),
+      project_code: document.getElementById('proj-code').value.trim(),
+      inndex_id: document.getElementById('proj-inndex-id').value.trim(),
+      inndex_project_name: document.getElementById('proj-inndex-name').value.trim(),
+    };
+    if (!payload.project_name || !payload.project_code || !payload.inndex_id || !payload.inndex_project_name) {
+      statusEl.textContent = 'All project fields are required.';
+      statusEl.style.color = '#9f1239';
+      return;
+    }
+    statusEl.textContent = 'Saving project...';
+    statusEl.style.color = '#475569';
+    try {
+      const resp = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to add project');
+      statusEl.textContent = `Added project: ${data.row.project_name} (${data.row.project_code})`;
+      statusEl.style.color = '#166534';
+      document.getElementById('proj-name').value = '';
+      document.getElementById('proj-code').value = '';
+      document.getElementById('proj-inndex-id').value = '';
+      document.getElementById('proj-inndex-name').value = '';
+    } catch (e) {
+      statusEl.textContent = e.message;
+      statusEl.style.color = '#9f1239';
+    }
+  }
+
+  function exportReport() {
+    const dataset = document.getElementById('report-dataset').value;
+    const params = new URLSearchParams({ dataset, format: 'csv' });
+    if (dataset === 'rams') {
+      const q = document.getElementById('rr-search').value.trim();
+      const revision = document.getElementById('rr-revision').value.trim();
+      const reviewDate = document.getElementById('rr-review-date').value;
+      const reviewStatus = document.getElementById('rr-review-status').value;
+      if (q) params.set('q', q);
+      if (revision) params.set('revision', revision);
+      if (reviewDate) params.set('reviewDate', reviewDate);
+      if (reviewStatus) params.set('reviewStatus', reviewStatus);
+    } else if (dataset === 'rams_register') {
+      const q = document.getElementById('rrr-search').value.trim();
+      const revision = document.getElementById('rrr-revision').value.trim();
+      const reviewDate = document.getElementById('rrr-review-date').value;
+      const reviewStatus = document.getElementById('rrr-review-status').value;
+      if (q) params.set('q', q);
+      if (revision) params.set('revision', revision);
+      if (reviewDate) params.set('reviewDate', reviewDate);
+      if (reviewStatus) params.set('reviewStatus', reviewStatus);
+    } else if (dataset === 'safe_starts') {
+      const project = document.getElementById('ss-project').value.trim();
+      const date = document.getElementById('ss-date').value;
+      if (project) params.set('project', project);
+      if (date) params.set('date', date);
+    } else if (dataset === 'safe_start_register') {
+      const project = document.getElementById('reg-project').value.trim();
+      const date = document.getElementById('reg-date').value;
+      if (project) params.set('project', project);
+      if (date) params.set('date', date);
+    } else if (dataset === 'safe_start_attendance') {
+      const project = document.getElementById('ssatt-project').value.trim();
+      const date = document.getElementById('ssatt-date').value;
+      const zeroOnly = document.getElementById('ssatt-zero-only').checked;
+      if (project) params.set('project', project);
+      if (date) params.set('date', date);
+      if (zeroOnly) params.set('zeroOnly', '1');
+    }
+    window.open(`/api/reports/export?${params.toString()}`, '_blank');
+  }
+
+  // Allow Enter key in filter inputs to trigger search
+  document.querySelectorAll('.filter-field input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const id = input.id;
+      if (id.startsWith('rr-'))  loadRamsRecords(1);
+      if (id.startsWith('rrr-')) loadRamsRegisterRecords(1);
+      if (id.startsWith('ss-'))  loadSSRecords(1);
+      if (id.startsWith('ssatt-')) loadSSAttendanceRecords(1);
+      if (id.startsWith('reg-')) loadRegRecords(1);
+    });
+  });
+</script>
+</body>
+</html>

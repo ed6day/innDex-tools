@@ -1,0 +1,1670 @@
+<!-- Developed by Edward Day -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Safe Start Analyser</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #dbe3ee;
+      --accent: #0f62fe;
+      --accent-soft: #e8f0ff;
+      --good: #0f9d58;
+      --warn: #d97706;
+      --bad: #c62828;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #0f172a, #1d4ed8);
+      color: white;
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+    .hero h1 { margin: 0 0 10px; font-size: 30px; }
+    .hero p { margin: 0; max-width: 900px; line-height: 1.5; color: rgba(255,255,255,0.92); }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .grid > div, .panel, .tab-panel {
+      min-width: 0;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+    .panel h2, .panel h3 {
+      margin-top: 0;
+    }
+    .dropzone {
+      border: 2px dashed #9db7ea;
+      border-radius: 16px;
+      background: #f8fbff;
+      padding: 18px;
+      text-align: center;
+      transition: 0.2s ease;
+      margin-bottom: 14px;
+    }
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .dropzone p { margin: 8px 0; color: var(--muted); }
+    .btn, button {
+      border: 0;
+      background: var(--accent);
+      color: white;
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.secondary, button.secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .btn:disabled, button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .btn.success { background: #0f9d58; color: white; }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .file-list {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .stat .label { color: var(--muted); font-size: 13px; }
+    .stat .value { font-size: 28px; font-weight: 700; margin-top: 8px; }
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    input[type="text"], select, input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: white;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      background: #eef2ff;
+      color: #1e3a8a;
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .tab.active {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      width: 100%;
+      max-width: 100%;
+    }
+    .toolbar-inline {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .toggle-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .toggle-wrap input {
+      width: auto;
+      margin: 0;
+    }
+    .quality-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .quality-tab {
+      background: #eef2ff;
+      color: #1e3a8a;
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .quality-tab.active {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf2f7;
+      text-align: left;
+      vertical-align: top;
+    }
+    .results-shell {
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .results-shell .table-wrap {
+      overflow-x: auto;
+      overflow-y: auto;
+      width: 100%;
+      max-width: 100%;
+      -webkit-overflow-scrolling: touch;
+    }
+    .results-shell table {
+      width: max-content;
+      min-width: 100%;
+      table-layout: auto;
+    }
+    .results-shell th,
+    .results-shell td {
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #f8fafc;
+      z-index: 1;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .good { background: #e8f7ef; color: var(--good); }
+    .warn { background: #fff3e8; color: var(--warn); }
+    .bad { background: #fdecec; color: var(--bad); }
+    .hidden { display: none; }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .log {
+      background: #0f172a;
+      color: #dbeafe;
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 140px;
+      max-height: 260px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .quality-box {
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      background: #fafcff;
+    }
+    /* DB save banner */
+    .db-banner {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .db-banner.info    { background: #e8f0ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .db-banner.success { background: #e8f7ef; color: #166534; border: 1px solid #bbf7d0; }
+    .db-banner.error   { background: #fdecec; color: #9f1239; border: 1px solid #fecaca; }
+    .db-banner.loading { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 680px) {
+      .stats { grid-template-columns: 1fr; }
+      .wrap { padding: 14px; }
+      .hero { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>Safe Start Analyser</h1>
+      <p>Upload one attendance Excel file and multiple Safe Start PDFs. The tool extracts the Safe Start details, register names and outcomes, then compares them against site attendance to show who was on site and how many Safe Starts they completed.</p>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Inputs</h2>
+        <div style="margin-bottom: 12px;">
+          <label class="small">Project</label>
+          <select id="projectSelect">
+            <option value="">Select project</option>
+          </select>
+        </div>
+
+        <div class="dropzone" id="excelDropzone">
+          <strong>Attendance Excel file</strong>
+          <p>Drop one .xlsx file here or browse</p>
+          <input id="excelInput" type="file" accept=".xlsx,.xls" />
+        </div>
+        <ul id="excelList" class="file-list"></ul>
+
+        <div class="dropzone" id="pdfDropzone">
+          <strong>Safe Start PDF files</strong>
+          <p>Drop multiple PDFs here, up to around 100 files</p>
+          <input id="pdfInput" type="file" accept=".pdf" multiple />
+        </div>
+        <ul id="pdfList" class="file-list"></ul>
+
+        <div class="panel" style="padding: 14px; margin-top: 14px; background: #fbfdff;">
+          <h3 style="margin-bottom: 10px;">Matching controls</h3>
+          <label class="small">Project filter (optional)</label>
+          <input id="projectFilterInput" type="text" placeholder="Project Name" />
+          <div style="height: 10px;"></div>
+          <label class="small">Date filter (optional)</label>
+          <select id="dateFilterSelect">
+            <option value="">All parsed Safe Start dates</option>
+          </select>
+          <div style="height: 10px;"></div>
+          <label class="small">Name matching</label>
+          <select id="nameMatchMode">
+            <option value="strict">Strict normalised full name</option>
+            <option value="loose">Loose full name with light typo tolerance</option>
+          </select>
+          <p class="small" style="margin-top: 10px;">Strict mode is safer. Loose mode helps where punctuation or minor spelling issues appear, but should be reviewed before relying on the output.</p>
+        </div>
+
+        <div class="actions">
+          <button id="processBtn">Process files</button>
+          <button id="exportBtn" class="secondary" disabled>Export workbook</button>
+          <button id="exportQualityBtn" class="secondary" disabled>Export quality checks</button>
+          <button id="saveDbBtn" class="success" disabled>Save to Database</button>
+          <button id="clearBtn" class="secondary">Clear results</button>
+        </div>
+
+        <div id="dbBanner" class="hidden"></div>
+
+        <p class="small" style="margin-top: 14px;">Accuracy note: this tool is designed for text-based Safe Start PDFs with a consistent innDex layout. It flags low-confidence records where fields could not be extracted cleanly.</p>
+      </div>
+
+      <div>
+        <div class="stats">
+          <div class="stat"><div class="label">Safe Starts parsed</div><div class="value" id="statSafeStarts">0</div></div>
+          <div class="stat"><div class="label">Attendance records</div><div class="value" id="statAttendance">0</div></div>
+          <div class="stat"><div class="label">Unique people on site</div><div class="value" id="statPeople">0</div></div>
+          <div class="stat"><div class="label">People with Safe Starts</div><div class="value" id="statPeopleWithStarts">0</div></div>
+          <div class="stat"><div class="label">Safe Start %</div><div class="value" id="statAverage">0%</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="section-title">
+            <h2 style="margin:0;">Quality checks</h2>
+          </div>
+          <div id="qualityChecks"></div>
+        </div>
+
+        <div class="panel results-shell" style="margin-top: 16px;">
+          <div class="section-title">
+            <h2 style="margin:0;">Results</h2>
+            <div class="tabs">
+              <div class="tab active" data-tab="summaryTab">Safe Starts</div>
+              <div class="tab" data-tab="attendanceTab">Safe Start Attendance</div>
+              <div class="tab" data-tab="registerTab">Register</div>
+            </div>
+          </div>
+
+          <div id="summaryTab" class="tab-panel">
+            <div class="table-wrap"><table id="safeStartsTable"></table></div>
+          </div>
+          <div id="attendanceTab" class="tab-panel hidden">
+            <div class="toolbar-inline">
+              <label class="toggle-wrap"><input type="checkbox" id="zeroStartsOnlyToggle" /> Show only people with zero Safe Starts</label>
+            </div>
+            <div class="table-wrap"><table id="attendanceTable"></table></div>
+          </div>
+          <div id="registerTab" class="tab-panel hidden">
+            <div class="table-wrap"><table id="registerTable"></table></div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 16px;">
+          <div class="section-title"><h2 style="margin:0;">Processing log</h2></div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+
+  const state = {
+    excelFile: null,
+    pdfFiles: [],
+    attendanceRows: [],
+    safeStarts: [],
+    registerRows: [],
+    attendanceComparison: [],
+    quality: [],
+    qualityExpanded: {},
+    duplicateRows: [],
+    attendanceSort: { key: 'Date', dir: 'asc' },
+    attendanceColumnFilters: {},
+    attendanceOnlyZeroStarts: false,
+    safeStartsSort: { key: 'Safe Start No', dir: 'asc' },
+    safeStartsColumnFilters: {},
+    registerSort: { key: 'Date', dir: 'asc' },
+    registerColumnFilters: {},
+    activeQualityKey: null,
+    projects: [],
+  };
+
+  const els = {
+    excelInput: document.getElementById('excelInput'),
+    pdfInput: document.getElementById('pdfInput'),
+    excelList: document.getElementById('excelList'),
+    pdfList: document.getElementById('pdfList'),
+    processBtn: document.getElementById('processBtn'),
+    exportBtn: document.getElementById('exportBtn'),
+    exportQualityBtn: document.getElementById('exportQualityBtn'),
+    saveDbBtn: document.getElementById('saveDbBtn'),
+    clearBtn: document.getElementById('clearBtn'),
+    log: document.getElementById('log'),
+    projectFilterInput: document.getElementById('projectFilterInput'),
+    projectSelect: document.getElementById('projectSelect'),
+    dateFilterSelect: document.getElementById('dateFilterSelect'),
+    nameMatchMode: document.getElementById('nameMatchMode'),
+    qualityChecks: document.getElementById('qualityChecks'),
+    dbBanner: document.getElementById('dbBanner'),
+    statSafeStarts: document.getElementById('statSafeStarts'),
+    statAttendance: document.getElementById('statAttendance'),
+    statPeople: document.getElementById('statPeople'),
+    statPeopleWithStarts: document.getElementById('statPeopleWithStarts'),
+    statAverage: document.getElementById('statAverage'),
+    safeStartsTable: document.getElementById('safeStartsTable'),
+    attendanceTable: document.getElementById('attendanceTable'),
+    registerTable: document.getElementById('registerTable'),
+    zeroStartsOnlyToggle: document.getElementById('zeroStartsOnlyToggle'),
+  };
+
+  function log(message) {
+    const stamp = new Date().toLocaleTimeString();
+    els.log.textContent += `[${stamp}] ${message}\n`;
+    els.log.scrollTop = els.log.scrollHeight;
+  }
+
+  function resetLog() {
+    els.log.textContent = '';
+  }
+
+  function showDbBanner(type, message) {
+    els.dbBanner.className = `db-banner ${type}`;
+    els.dbBanner.textContent = message;
+    els.dbBanner.classList.remove('hidden');
+  }
+
+  function hideDbBanner() {
+    els.dbBanner.classList.add('hidden');
+  }
+
+  async function loadProjects() {
+    try {
+      const resp = await fetch('/api/projects');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const rows = data.rows || [];
+      els.projectSelect.innerHTML = '<option value="">Select project</option>' + rows.map((p, i) => {
+        const label = `${escapeHtml(p.project_name)} (${escapeHtml(p.project_code)})`;
+        return `<option value="${i}">${label}</option>`;
+      }).join('');
+      state.projects = rows;
+    } catch (_e) {
+      // Keep analyser usable even if projects endpoint fails.
+    }
+  }
+
+  function normaliseText(value) {
+    return String(value || '')
+      .replace(/['']/g, "'")
+      .replace(/([A-Za-z])\s+fi\s+([A-Za-z])/g, '$1ffi$2')
+      .replace(/([A-Za-z])\s+fl\s+([A-Za-z])/g, '$1fl$2')
+      .replace(/([A-Za-z]{2,})\s+fi/g, '$1fi')
+      .replace(/([A-Za-z]{2,})\s+fl/g, '$1fl')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normaliseName(value) {
+    return normaliseText(value)
+      .toLowerCase()
+      .replace(/fi/g, 'ffi')
+      .replace(/fl/g, 'fl')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function slugProject(value) {
+    return normaliseText(value)
+      .toLowerCase()
+      .replace(/\(#.*?\)/g, '')
+      .replace(/^\d+\s*-\s*/,'')
+      .replace(/\s*:\s*.*$/, '')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function parseDateOnly(value) {
+    const raw = normaliseText(value);
+    const match = raw.match(/(\d{1,2}\/\w{3}\/\d{4})/i);
+    return match ? match[1] : raw;
+  }
+
+  function splitListText(text) {
+    const cleaned = normaliseText(text).replace(/^Dabs Discussion\s*/i, '');
+    const matches = [...cleaned.matchAll(/(?:^|\s)(\d+)\.\s*([^\d]+?)(?=(?:\s\d+\.|$))/g)];
+    if (matches.length) {
+      return matches.map(m => normaliseText(m[2])).filter(Boolean);
+    }
+    return cleaned
+      .split(/;|,|\|/)
+      .map(s => normaliseText(s))
+      .filter(Boolean);
+  }
+
+  function titleCase(value) {
+    return normaliseText(value).replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function fileIdentity(file) {
+    return [file.name || '', file.size || 0, file.lastModified || 0].join('::');
+  }
+
+  function appendPdfFiles(files) {
+    const incoming = files.filter(f => /\.pdf$/i.test(f.name));
+    if (!incoming.length) return;
+    const seen = new Set(state.pdfFiles.map(fileIdentity));
+    for (const file of incoming) {
+      const key = fileIdentity(file);
+      if (!seen.has(key)) {
+        state.pdfFiles.push(file);
+        seen.add(key);
+      }
+    }
+    renderFileList();
+  }
+
+  function setDropzone(dropId, inputEl, multiple = false) {
+    const dropzone = document.getElementById(dropId);
+    ['dragenter', 'dragover'].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+      dropzone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+    dropzone.addEventListener('drop', e => {
+      const files = [...e.dataTransfer.files];
+      if (multiple) {
+        appendPdfFiles(files);
+      } else {
+        state.excelFile = files.find(f => /\.(xlsx|xls)$/i.test(f.name)) || null;
+        renderFileList();
+      }
+    });
+    inputEl.addEventListener('change', e => {
+      const files = [...e.target.files];
+      if (multiple) {
+        appendPdfFiles(files);
+        inputEl.value = '';
+      } else {
+        state.excelFile = files[0] || null;
+        renderFileList();
+      }
+    });
+  }
+
+  setDropzone('excelDropzone', els.excelInput, false);
+  setDropzone('pdfDropzone', els.pdfInput, true);
+
+  function renderFileList() {
+    els.excelList.innerHTML = state.excelFile ? `<li>${state.excelFile.name}</li>` : '<li class="small">No Excel file selected</li>';
+    els.pdfList.innerHTML = state.pdfFiles.length
+      ? state.pdfFiles.map(f => `<li>${f.name}</li>`).join('')
+      : '<li class="small">No PDF files selected</li>';
+  }
+
+  function renderTable(el, rows) {
+    if (!rows || !rows.length) {
+      el.innerHTML = '<thead><tr><th>No data</th></tr></thead><tbody><tr><td>Process files to view results.</td></tr></tbody>';
+      return;
+    }
+    const headers = Object.keys(rows[0]);
+    const thead = `<thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`;
+    const tbody = `<tbody>${rows.map(row => `<tr>${headers.map(h => `<td>${formatCell(row[h])}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    el.innerHTML = thead + tbody;
+  }
+
+  function filterRows(rows, filters) {
+    return rows.filter(row => Object.entries(filters || {}).every(([key, value]) => {
+      const term = normaliseText(value).toLowerCase();
+      if (!term) return true;
+      const cell = Array.isArray(row[key]) ? row[key].join(', ') : String(row[key] ?? '');
+      return cell.toLowerCase().includes(term);
+    }));
+  }
+
+  function renderFilterableTable(el, rows, options) {
+    const { headers, sortState, sortKeyMap, columnFilters, onSortChange, onFilterChange, emptyMessage } = options;
+    const sortedRows = sortRows(filterRows(rows, columnFilters), sortState);
+    const thead = `
+      <thead>
+        <tr>${headers.map(h => {
+          const active = sortState.key === sortKeyMap[h];
+          const arrow = active ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+          return `<th><button type="button" class="secondary sort-btn" data-sort-key="${escapeHtml(sortKeyMap[h])}" style="width:100%; text-align:left; padding:0; background:none; border:0; font:inherit; font-weight:700; cursor:pointer;">${escapeHtml(h)}${arrow}</button></th>`;
+        }).join('')}</tr>
+        <tr>${headers.map(h => `<th><input type="text" class="column-filter" data-filter-key="${escapeHtml(h)}" value="${escapeHtml(columnFilters[h] || '')}" placeholder="Filter..." style="min-width:100px;" /></th>`).join('')}</tr>
+      </thead>`;
+    const tbody = sortedRows.length
+      ? `<tbody>${sortedRows.map(row => `<tr>${headers.map(h => `<td>${formatCell(row[h])}</td>`).join('')}</tr>`).join('')}</tbody>`
+      : `<tbody><tr><td colspan="${headers.length}">${escapeHtml(emptyMessage || 'No rows match the current filters.')}</td></tr></tbody>`;
+    el.innerHTML = thead + tbody;
+
+    el.querySelectorAll('.sort-btn').forEach(btn => {
+      btn.addEventListener('click', () => onSortChange(btn.dataset.sortKey));
+    });
+    el.querySelectorAll('.column-filter').forEach(input => {
+      input.addEventListener('input', () => onFilterChange(input.dataset.filterKey, input.value));
+    });
+  }
+
+  function formatCell(value) {
+    if (value === null || value === undefined || value === '') return '';
+    if (Array.isArray(value)) return value.map(v => escapeHtml(String(v))).join('<br>');
+    if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString() : '';
+    return escapeHtml(String(value));
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>\"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
+  function renderQualityChecks() {
+    if (!state.quality.length) {
+      state.activeQualityKey = null;
+      els.qualityChecks.innerHTML = '<div class="quality-box"><span class="badge good">Ready</span> No checks yet.</div>';
+      return;
+    }
+
+    const activeKey = state.quality.some(item => item.key === state.activeQualityKey)
+      ? state.activeQualityKey
+      : state.quality[0].key;
+    state.activeQualityKey = activeKey;
+    const activeItem = state.quality.find(item => item.key === activeKey) || state.quality[0];
+    const cls = activeItem.level === 'bad' ? 'bad' : activeItem.level === 'warn' ? 'warn' : 'good';
+    const canExpand = Array.isArray(activeItem.records) && activeItem.records.length > 0;
+    const expanded = !!state.qualityExpanded[activeItem.key];
+    const detail = canExpand && expanded
+      ? `<div class="quality-detail"><div class="small" style="margin-bottom:8px;">Flagged records: ${activeItem.records.length}</div>${buildInlineTable(activeItem.records)}</div>`
+      : '';
+
+    els.qualityChecks.innerHTML = `
+      <div class="quality-tabs">
+        ${state.quality.map(item => {
+          const itemCls = item.level === 'bad' ? 'bad' : item.level === 'warn' ? 'warn' : 'good';
+          return `<button type="button" class="quality-tab ${item.key === activeItem.key ? 'active' : ''}" data-quality-tab="${escapeHtml(item.key)}">${escapeHtml(item.title)} <span class="badge ${itemCls}" style="margin-left:6px;">${escapeHtml(item.level.toUpperCase())}</span></button>`;
+        }).join('')}
+      </div>
+      <div class="quality-box">
+        <div class="quality-header">
+          <div>
+            <span class="badge ${cls}">${escapeHtml(activeItem.level.toUpperCase())}</span>
+            <strong>${escapeHtml(activeItem.title)}</strong>
+            <div class="small" style="margin-top:6px;">${escapeHtml(activeItem.message)}</div>
+          </div>
+          <div class="quality-actions">
+            ${canExpand ? `<button type="button" class="secondary quality-toggle" data-quality-key="${escapeHtml(activeItem.key)}">${expanded ? 'Hide records' : 'View records'}</button>` : ''}
+          </div>
+        </div>
+        ${detail}
+      </div>`;
+
+    els.qualityChecks.querySelectorAll('.quality-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.activeQualityKey = btn.dataset.qualityTab;
+        renderQualityChecks();
+      });
+    });
+
+    els.qualityChecks.querySelectorAll('.quality-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.qualityKey;
+        state.qualityExpanded[key] = !state.qualityExpanded[key];
+        renderQualityChecks();
+      });
+    });
+  }
+
+  function buildInlineTable(rows) {
+    if (!rows || !rows.length) return '<div class="small">No records.</div>';
+    const headers = Object.keys(rows[0]);
+    return `<div class="table-wrap"><table><thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${headers.map(h => `<td>${formatCell(row[h])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function rebuildDateFilter() {
+    const dates = [...new Set(state.safeStarts.map(r => r.Date).filter(Boolean))].sort();
+    els.dateFilterSelect.innerHTML = '<option value="">All parsed Safe Start dates</option>' + dates.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+  }
+
+  function updateStats() {
+    const filteredAttendance = getFilteredAttendanceComparison();
+    const uniquePeople = new Set(filteredAttendance.map(r => r.NormalisedName)).size;
+    const peopleWithStarts = new Set(filteredAttendance.filter(r => (Number(r.SafeStartCount) || 0) > 0).map(r => r.NormalisedName)).size;
+    const safeStartPercent = uniquePeople ? ((peopleWithStarts / uniquePeople) * 100) : 0;
+    els.statSafeStarts.textContent = state.safeStarts.length;
+    els.statAttendance.textContent = state.attendanceRows.length;
+    els.statPeople.textContent = uniquePeople;
+    els.statPeopleWithStarts.textContent = peopleWithStarts;
+    els.statAverage.textContent = `${safeStartPercent.toFixed(1)}%`;
+  }
+
+  function getFilters() {
+    return {
+      project: slugProject(els.projectFilterInput.value),
+      date: normaliseText(els.dateFilterSelect.value),
+      nameMode: els.nameMatchMode.value,
+    };
+  }
+
+  function passesStartFilter(start, filters) {
+    if (filters.project && slugProject(start.Project) !== filters.project) return false;
+    if (filters.date && start.Date !== filters.date) return false;
+    return true;
+  }
+
+  function getFilteredAttendanceComparison() {
+    const filters = getFilters();
+    return state.attendanceComparison.filter(r => {
+      if (filters.project && slugProject(r.Project) !== filters.project) return false;
+      if (filters.date && r.Date !== filters.date) return false;
+      return true;
+    });
+  }
+
+  function sortRows(rows, sortState) {
+    const sorted = [...rows];
+    if (!sortState || !sortState.key) return sorted;
+    const dir = sortState.dir === 'desc' ? -1 : 1;
+    sorted.sort((a, b) => {
+      const av = a[sortState.key];
+      const bv = b[sortState.key];
+      const an = Number(av);
+      const bn = Number(bv);
+      if (!Number.isNaN(an) && !Number.isNaN(bn) && String(av).trim() !== '' && String(bv).trim() !== '') {
+        return (an - bn) * dir;
+      }
+      return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+    return sorted;
+  }
+
+  function getAttendanceDisplayRows() {
+    const rows = getFilteredAttendanceComparison().filter(row => {
+      if (state.attendanceOnlyZeroStarts && Number(row.SafeStartCount || 0) !== 0) return false;
+      return true;
+    });
+    return sortRows(rows, state.attendanceSort);
+  }
+
+  function renderAttendanceTable(rows) {
+    const headers = ['Date', 'Project', 'Name', 'Company', 'Job Role', 'In Time', 'Out Time', 'Safe Starts Completed', 'Match Method'];
+    const sortKeyMap = {
+      'Date': 'Date',
+      'Project': 'Project',
+      'Name': 'Name',
+      'Company': 'Company',
+      'Job Role': 'Job Role',
+      'In Time': 'In Time',
+      'Out Time': 'Out Time',
+      'Safe Starts Completed': 'Safe Starts Completed',
+      'Match Method': 'Match Method',
+    };
+    const rowsMapped = rows.map(r => ({
+      Date: r.Date,
+      Project: r.Project,
+      Name: r.Name,
+      Company: r.Company,
+      'Job Role': r.JobRole || '',
+      'In Time': r.InTime,
+      'Out Time': r.OutTime,
+      'Safe Starts Completed': r.SafeStartCount,
+      'Matched Safe Start Nos': r.MatchedSafeStartNos.join(', '),
+      'Matched Employers': r.MatchedEmployers.join(', '),
+      'Match Method': r.MatchMethod,
+    }));
+
+    renderFilterableTable(els.attendanceTable, rowsMapped, {
+      headers,
+      sortState: state.attendanceSort,
+      sortKeyMap,
+      columnFilters: state.attendanceColumnFilters,
+      emptyMessage: 'No rows match the current filters.',
+      onSortChange: key => {
+        if (state.attendanceSort.key === key) {
+          state.attendanceSort.dir = state.attendanceSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.attendanceSort = { key, dir: 'asc' };
+        }
+        refreshVisibleTables();
+      },
+      onFilterChange: (key, value) => {
+        state.attendanceColumnFilters[key] = value;
+        refreshVisibleTables();
+      },
+    });
+  }
+
+  function refreshVisibleTables() {
+    const filters = getFilters();
+    const safeStartsBase = state.safeStarts.filter(r => passesStartFilter(r, filters)).map(r => ({
+      'File Name': r.File,
+      'Safe Start No': r.SafeStartNo,
+      Date: r.Date,
+      Time: r.Time,
+      Project: r.Project,
+      Employer: r.Employer,
+      'Submitted By': r.SubmittedBy,
+      'Attendee Count': r.AttendeeCount,
+      Confidence: r.Confidence,
+      Notes: r.Notes.join(' | '),
+    }));
+    const registerBase = state.registerRows.filter(r => {
+      if (filters.project && slugProject(r.Project) !== filters.project) return false;
+      if (filters.date && r.Date !== filters.date) return false;
+      return true;
+    }).map(r => ({
+      Date: r.Date,
+      Project: r.Project,
+      'Safe Start No': r.SafeStartNo,
+      Name: r.Name,
+      Employer: r.Employer,
+      'Matched to Excel': r.MatchedToExcel,
+    }));
+
+    renderFilterableTable(els.safeStartsTable, safeStartsBase, {
+      headers: ['File Name', 'Safe Start No', 'Date', 'Time', 'Project', 'Employer', 'Submitted By', 'Attendee Count', 'Confidence', 'Notes'],
+      sortState: state.safeStartsSort,
+      sortKeyMap: {
+        'File Name': 'File Name',
+        'Safe Start No': 'Safe Start No',
+        'Date': 'Date',
+        'Time': 'Time',
+        'Project': 'Project',
+        'Employer': 'Employer',
+        'Submitted By': 'Submitted By',
+        'Attendee Count': 'Attendee Count',
+        'Confidence': 'Confidence',
+        'Notes': 'Notes',
+      },
+      columnFilters: state.safeStartsColumnFilters,
+      emptyMessage: 'No Safe Starts match the current filters.',
+      onSortChange: key => {
+        if (state.safeStartsSort.key === key) {
+          state.safeStartsSort.dir = state.safeStartsSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.safeStartsSort = { key, dir: 'asc' };
+        }
+        refreshVisibleTables();
+      },
+      onFilterChange: (key, value) => {
+        state.safeStartsColumnFilters[key] = value;
+        refreshVisibleTables();
+      },
+    });
+
+    renderAttendanceTable(getAttendanceDisplayRows());
+
+    renderFilterableTable(els.registerTable, registerBase, {
+      headers: ['Date', 'Project', 'Safe Start No', 'Name', 'Employer', 'Matched to Excel'],
+      sortState: state.registerSort,
+      sortKeyMap: {
+        'Date': 'Date',
+        'Project': 'Project',
+        'Safe Start No': 'Safe Start No',
+        'Name': 'Name',
+        'Employer': 'Employer',
+        'Matched to Excel': 'Matched to Excel',
+      },
+      columnFilters: state.registerColumnFilters,
+      emptyMessage: 'No register rows match the current filters.',
+      onSortChange: key => {
+        if (state.registerSort.key === key) {
+          state.registerSort.dir = state.registerSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.registerSort = { key, dir: 'asc' };
+        }
+        refreshVisibleTables();
+      },
+      onFilterChange: (key, value) => {
+        state.registerColumnFilters[key] = value;
+        refreshVisibleTables();
+      },
+    });
+    updateStats();
+  }
+
+  els.projectFilterInput.addEventListener('input', refreshVisibleTables);
+  els.dateFilterSelect.addEventListener('change', refreshVisibleTables);
+  els.zeroStartsOnlyToggle.addEventListener('change', () => {
+    state.attendanceOnlyZeroStarts = els.zeroStartsOnlyToggle.checked;
+    refreshVisibleTables();
+  });
+  els.nameMatchMode.addEventListener('change', async () => {
+    if (state.attendanceRows.length && state.safeStarts.length) {
+      buildAttendanceComparison();
+      refreshVisibleTables();
+      buildQualityChecks();
+      renderQualityChecks();
+    }
+  });
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab).classList.remove('hidden');
+    });
+  });
+
+  function findHeader(rows, candidates) {
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i].map(v => normaliseText(v).toLowerCase());
+      const hitCount = candidates.filter(c => row.includes(c.toLowerCase())).length;
+      if (hitCount >= Math.max(3, Math.floor(candidates.length / 2))) return i;
+    }
+    return 0;
+  }
+
+  async function parseExcel(file) {
+    log(`Reading Excel file: ${file.name}`);
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+    const headerIndex = findHeader(rows, ['Date', 'Project', 'First Name', 'Last Name', 'Company', 'In Time']);
+    const headers = rows[headerIndex].map(h => normaliseText(h));
+    const body = rows.slice(headerIndex + 1).filter(r => r.some(v => normaliseText(v) !== ''));
+    const mapped = body.map(r => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = r[i] ?? '');
+      const firstName = normaliseText(obj['First Name']);
+      const lastName = normaliseText(obj['Last Name']);
+      return {
+        Date: parseDateOnly(obj['Date']),
+        Project: normaliseText(obj['Project']),
+        ProjectKey: slugProject(obj['Project']),
+        Name: normaliseText(`${firstName} ${lastName}`),
+        NormalisedName: normaliseName(`${firstName} ${lastName}`),
+        Company: normaliseText(obj['Company']),
+        JobRole: normaliseText(obj['Job Role'] || obj['Role'] || obj['Job role'] || obj['Occupation']),
+        InTime: normaliseText(obj['In Time']),
+        OutTime: normaliseText(obj['Out Time']),
+        InnDexID: normaliseText(obj['innDex ID']),
+      };
+    }).filter(r => r.Name && r.Date && r.Project);
+    log(`Excel rows loaded: ${mapped.length}`);
+    return mapped;
+  }
+
+  function clusterRows(items) {
+    const prepared = items
+      .filter(it => normaliseText(it.str))
+      .map(it => ({
+        text: normaliseText(it.str),
+        x: it.transform[4],
+        y: Math.round(it.transform[5] * 2) / 2,
+        rawY: it.transform[5],
+      }))
+      .sort((a, b) => b.y - a.y || a.x - b.x);
+
+    const rows = [];
+    const tolerance = 2.5;
+    for (const item of prepared) {
+      let row = rows.find(r => Math.abs(r.y - item.y) <= tolerance);
+      if (!row) {
+        row = { y: item.y, items: [] };
+        rows.push(row);
+      }
+      row.items.push(item);
+    }
+    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+    rows.sort((a, b) => b.y - a.y);
+    return rows.map(row => ({
+      y: row.y,
+      items: row.items,
+      text: joinRowText(row.items),
+    }));
+  }
+
+  function joinRowText(items) {
+    let out = '';
+    let prevX = null;
+    for (const item of items) {
+      const addSpace = prevX !== null && (item.x - prevX) > 3;
+      out += (addSpace ? ' ' : '') + item.text;
+      prevX = item.x + item.text.length * 3;
+    }
+    return normaliseText(out);
+  }
+
+  function looksLikeBoilerplate(text) {
+    const t = normaliseText(text).toLowerCase();
+    return !t ||
+      t === 'register' ||
+      t === 'no' ||
+      /^page\s+\d+\s+of\s+\d+$/i.test(t) ||
+      /powered by inndex/i.test(t) ||
+      /^safe start$/i.test(t) ||
+      /^safe start no\.?\s*\d+/i.test(t) ||
+      /^safe start details$/i.test(t) ||
+      /^date\s*&\s*time/i.test(t) ||
+      /^submitted by/i.test(t) ||
+      /^conversation category/i.test(t) ||
+      /^location\s*&\s*task/i.test(t) ||
+      /^discussion points\s*&\s*issues/i.test(t) ||
+      /^outcomes\s*&\s*actions/i.test(t);
+  }
+
+  function buildEmployerVariants(employer, projectLine) {
+    const set = new Set();
+    [employer, projectLine, 'Phoenix ME Limited', 'envirotek construction', 'SWA Electrics', 'Phoenix ME', 'PME'].forEach(v => {
+      const t = normaliseText(v);
+      if (t) set.add(t);
+    });
+    return [...set].sort((a, b) => b.length - a.length);
+  }
+
+  function splitRegisterLine(line, employerVariants) {
+    const cleaned = normaliseText(line);
+    if (!cleaned || looksLikeBoilerplate(cleaned)) return null;
+    if (/^(name employer signature|name\s+employer\s+signature)$/i.test(cleaned)) return null;
+
+    for (const employer of employerVariants) {
+      const idx = cleaned.toLowerCase().lastIndexOf(employer.toLowerCase());
+      if (idx > 0) {
+        const name = normaliseText(cleaned.slice(0, idx));
+        const emp = normaliseText(cleaned.slice(idx));
+        if (name && emp) return { name, employer: emp };
+      }
+    }
+
+    const parts = cleaned.split(/\s+/);
+    if (parts.length >= 2 && parts.length <= 5) {
+      return { name: cleaned, employer: '' };
+    }
+    return null;
+  }
+
+  function extractRegisterFromAllRows(rows, employerVariants) {
+    const out = [];
+    let inRegister = false;
+    let nameBoundary = null;
+    let employerBoundary = null;
+    let signatureBoundary = null;
+
+    for (const row of rows) {
+      const lower = row.text.toLowerCase();
+      if (lower.includes('name') && lower.includes('employer') && lower.includes('signature')) {
+        const employerItem = row.items.find(i => i.text.toLowerCase() === 'employer');
+        const signatureItem = row.items.find(i => i.text.toLowerCase() === 'signature');
+        nameBoundary = row.items[0]?.x ?? 0;
+        employerBoundary = employerItem?.x ?? 180;
+        signatureBoundary = signatureItem?.x ?? 380;
+        inRegister = true;
+        continue;
+      }
+      if (!inRegister) continue;
+      if (lower.startsWith('safe start details')) break;
+      if (!row.items.length) continue;
+
+      const rowText = normaliseText(row.text);
+      if (looksLikeBoilerplate(rowText)) continue;
+
+      let parsed = null;
+      if (nameBoundary !== null && employerBoundary !== null) {
+        const nameParts = row.items.filter(i => i.x >= nameBoundary && i.x < employerBoundary).map(i => i.text);
+        const employerParts = row.items.filter(i => i.x >= employerBoundary && i.x < signatureBoundary).map(i => i.text);
+        const name = normaliseText(nameParts.join(' '));
+        const employer = normaliseText(employerParts.join(' '));
+        if (name && !looksLikeBoilerplate(name)) parsed = { name, employer };
+      }
+
+      if (!parsed || !parsed.name) {
+        parsed = splitRegisterLine(rowText, employerVariants);
+      }
+
+      if (parsed && parsed.name) out.push(parsed);
+    }
+    return out;
+  }
+
+  function extractField(text, label, endLabels = []) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const endPart = endLabels.length
+      ? `(?=\\n(?:${endLabels.map(v => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*:|$)`
+      : `(?=$)`;
+    const regex = new RegExp(`${escaped}\\s*:\\s*([\\s\\S]*?)${endPart}`, 'i');
+    const match = text.match(regex);
+    return match ? normaliseText(match[1]) : '';
+  }
+
+  function levenshtein(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost
+        );
+      }
+    }
+    return dp[m][n];
+  }
+
+  function isLooseMatch(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    const aa = normaliseName(a).replace(/ffi/g, 'fi').replace(/fl/g, 'flo');
+    const bb = normaliseName(b).replace(/ffi/g, 'fi').replace(/fl/g, 'flo');
+    if (aa === bb) return true;
+    const distance = levenshtein(aa, bb);
+    const maxLen = Math.max(aa.length, bb.length);
+    if (maxLen >= 12) return distance <= 2;
+    return maxLen >= 8 ? distance <= 1 : distance === 0;
+  }
+
+  async function parseSafeStartPdf(file) {
+    log(`Reading PDF: ${file.name}`);
+    const buffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let allRows = [];
+
+    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+      const page = await pdf.getPage(pageNo);
+      const content = await page.getTextContent();
+      const rows = clusterRows(content.items);
+      allRows = allRows.concat(rows);
+    }
+
+    const text = allRows.map(r => r.text).join('\n');
+    const headerProjectLine = allRows.find(r => /#\s*\d+\s*\)\s*:/.test(r.text) || /Phoenix ME Limited/i.test(r.text))?.text || '';
+    const project = (() => {
+      const match = headerProjectLine.match(/^\d+\s*-\s*(.*?)\s*\(#/);
+      return match ? normaliseText(match[1]) : normaliseText(headerProjectLine);
+    })();
+
+    const safeStartNo = (text.match(/Safe Start No\.\s*(\d+)/i) || [,''])[1];
+    const dateTime = extractField(text, 'Date & Time', ['Submitted By', 'Employer', 'Conversation Category']);
+    const submittedBy = extractField(text, 'Submitted By', ['Employer', 'Conversation Category', 'Location & Task']);
+    const employer = extractField(text, 'Employer', ['Conversation Category', 'Location & Task', 'Discussion points & Issues']);
+    const category = extractField(text, 'Conversation Category', ['Location & Task', 'Discussion points & Issues']);
+    const locationTask = extractField(text, 'Location & Task', ['Discussion points & Issues', 'Outcomes & Actions']);
+    const discussion = extractField(text, 'Discussion points & Issues', ['Outcomes & Actions', 'Register']);
+    const outcomes = extractField(text, 'Outcomes & Actions', ['Register']);
+
+    const employerVariants = buildEmployerVariants(employer, headerProjectLine);
+    const register = extractRegisterFromAllRows(allRows, employerVariants);
+
+    const dedupedRegister = [];
+    const seen = new Set();
+    for (const row of register) {
+      const normalisedEmployer = normaliseText(row.employer || employer);
+      const key = `${normaliseName(row.name)}|${normalisedEmployer.toLowerCase()}`;
+      if (!row.name || seen.has(key)) continue;
+      if (looksLikeBoilerplate(row.name)) continue;
+      if (normalisedEmployer && looksLikeBoilerplate(normalisedEmployer)) continue;
+      if (/^\d{1,2}\/\w{3}\/\d{4}$/i.test(row.name) || /^\d+$/i.test(row.name)) continue;
+      seen.add(key);
+      dedupedRegister.push({
+        Name: row.name,
+        Employer: normalisedEmployer || employer,
+      });
+    }
+
+    const notes = [];
+    let confidence = 'High';
+    if (!safeStartNo) notes.push('Safe Start number missing');
+    if (!dateTime) notes.push('Date/time missing');
+    if (!project) notes.push('Project could not be read');
+    if (!dedupedRegister.length) notes.push('No attendee names extracted');
+    if (!discussion) notes.push('Discussion points missing');
+    if (notes.length >= 3) confidence = 'Low';
+    else if (notes.length >= 1) confidence = 'Medium';
+
+    const [dateOnly, timeOnly] = (() => {
+      const m = dateTime.match(/(\d{1,2}\/\w{3}\/\d{4})\s+(\d{1,2}:\d{2}:\d{2})/i);
+      return m ? [m[1], m[2]] : [parseDateOnly(dateTime), ''];
+    })();
+
+    return {
+      File: file.name,
+      SafeStartNo: safeStartNo,
+      Project: project,
+      ProjectKey: slugProject(project),
+      HeaderProjectLine: headerProjectLine,
+      Date: dateOnly,
+      Time: timeOnly,
+      DateTime: dateTime,
+      SubmittedBy: submittedBy,
+      Employer: employer,
+      Category: category,
+      LocationTask: locationTask,
+      DiscussionPoints: discussion,
+      DiscussionItems: splitListText(discussion),
+      Outcomes: outcomes,
+      OutcomeItems: splitListText(outcomes),
+      AttendeeCount: dedupedRegister.length,
+      Register: dedupedRegister,
+      Confidence: confidence,
+      Notes: notes,
+    };
+  }
+
+  function buildAttendanceComparison() {
+    const mode = els.nameMatchMode.value;
+    const attendanceRows = state.attendanceRows.map(r => ({ ...r, SafeStartCount: 0, MatchedSafeStartNos: [], MatchedEmployers: [], MatchMethod: mode === 'strict' ? 'Strict' : 'Loose' }));
+    const byDateProject = new Map();
+
+    for (const row of attendanceRows) {
+      const key = `${row.Date}|${row.ProjectKey}`;
+      if (!byDateProject.has(key)) byDateProject.set(key, []);
+      byDateProject.get(key).push(row);
+    }
+
+    state.registerRows = [];
+
+    for (const start of state.safeStarts) {
+      const key = `${start.Date}|${start.ProjectKey}`;
+      const candidates = byDateProject.get(key) || [];
+      for (const person of start.Register) {
+        const target = normaliseName(person.Name);
+        const targetNoApos = target.replace(/'/g, ' ');
+        let matched = candidates.find(c => c.NormalisedName === target || c.NormalisedName === targetNoApos);
+        let matchedToExcel = false;
+        if (!matched && mode === 'loose') {
+          matched = candidates.find(c => isLooseMatch(c.NormalisedName, target));
+        }
+        if (!matched && mode === 'loose') {
+          const targetParts = target.split(' ').filter(Boolean);
+          matched = candidates.find(c => {
+            const cparts = c.NormalisedName.split(' ').filter(Boolean);
+            return targetParts.length >= 2 && cparts.length >= 2 && targetParts[0] === cparts[0] && isLooseMatch(targetParts.slice(1).join(' '), cparts.slice(1).join(' '));
+          });
+        }
+        if (matched) {
+          matched.SafeStartCount += 1;
+          if (!matched.MatchedSafeStartNos.includes(start.SafeStartNo)) matched.MatchedSafeStartNos.push(start.SafeStartNo);
+          if (person.Employer && !matched.MatchedEmployers.includes(person.Employer)) matched.MatchedEmployers.push(person.Employer);
+          matchedToExcel = true;
+        }
+        state.registerRows.push({
+          Date: start.Date,
+          Project: start.Project,
+          SafeStartNo: start.SafeStartNo,
+          Name: person.Name,
+          Employer: person.Employer,
+          MatchedToExcel: matchedToExcel ? 'Yes' : 'No',
+        });
+      }
+    }
+
+    state.attendanceComparison = attendanceRows.sort((a, b) => a.Date.localeCompare(b.Date) || a.Project.localeCompare(b.Project) || a.Name.localeCompare(b.Name));
+  }
+
+  function dedupeSafeStarts(rows) {
+    const seen = new Map();
+    const kept = [];
+    const duplicates = [];
+    for (const row of rows) {
+      const key = row.SafeStartNo ? `${row.ProjectKey}|${row.Date}|${row.SafeStartNo}` : `${row.ProjectKey}|${row.Date}|${row.File}`;
+      if (!seen.has(key)) {
+        seen.set(key, row);
+        kept.push(row);
+      } else {
+        const original = seen.get(key);
+        duplicates.push({
+          'File Name': row.File,
+          Date: row.Date,
+          Project: row.Project,
+          'Safe Start No': row.SafeStartNo,
+          'Duplicate Of': original.File,
+          Confidence: row.Confidence,
+          Notes: (row.Notes || []).join(' | '),
+        });
+      }
+    }
+    return { kept, duplicates };
+  }
+
+  function buildQualityChecks() {
+    const checks = [];
+    const lowConfidenceRecords = state.safeStarts
+      .filter(s => s.Confidence === 'Low')
+      .map(s => ({ File: s.File, Date: s.Date, Project: s.Project, 'Safe Start No': s.SafeStartNo, Confidence: s.Confidence, Notes: s.Notes.join(' | ') }));
+    const mediumConfidenceRecords = state.safeStarts
+      .filter(s => s.Confidence === 'Medium')
+      .map(s => ({ File: s.File, Date: s.Date, Project: s.Project, 'Safe Start No': s.SafeStartNo, Confidence: s.Confidence, Notes: s.Notes.join(' | ') }));
+    const unmatchedRegisterRecords = state.registerRows
+      .filter(r => r.MatchedToExcel === 'No')
+      .filter(r => !/^\d+\s*-\s*.+\(#\s*\d+\s*\)\s*:?$/i.test(String(r.Name || '').trim()))
+      .map(r => ({ Date: r.Date, Project: r.Project, 'Safe Start No': r.SafeStartNo, Name: r.Name, Employer: r.Employer }));
+    const zeroStartRecords = state.attendanceComparison
+      .filter(r => r.SafeStartCount === 0)
+      .map(r => ({ Date: r.Date, Project: r.Project, Name: r.Name, Company: r.Company, 'Job Role': r.JobRole || '', 'In Time': r.InTime, 'Out Time': r.OutTime }));
+
+    const duplicateStartRecords = state.duplicateRows || [];
+
+    checks.push({
+      key: 'lowConfidence',
+      level: lowConfidenceRecords.length ? 'bad' : 'good',
+      title: 'Low-confidence Safe Starts',
+      message: lowConfidenceRecords.length ? `${lowConfidenceRecords.length} Safe Start files need manual review.` : 'No low-confidence files detected.',
+      records: lowConfidenceRecords,
+    });
+    checks.push({
+      key: 'mediumConfidence',
+      level: mediumConfidenceRecords.length ? 'warn' : 'good',
+      title: 'Medium-confidence Safe Starts',
+      message: mediumConfidenceRecords.length ? `${mediumConfidenceRecords.length} files extracted with one or more missing fields.` : 'All files extracted cleanly.',
+      records: mediumConfidenceRecords,
+    });
+    checks.push({
+      key: 'duplicateSafeStarts',
+      level: duplicateStartRecords.length ? 'warn' : 'good',
+      title: 'Duplicate Safe Start files excluded',
+      message: duplicateStartRecords.length ? `${duplicateStartRecords.length} duplicate Safe Start file(s) were detected and excluded from the output.` : 'No duplicate Safe Start uploads detected.',
+      records: duplicateStartRecords,
+    });
+    checks.push({
+      key: 'unmatchedRegister',
+      level: unmatchedRegisterRecords.length ? 'warn' : 'good',
+      title: 'Register names not matched to Excel',
+      message: unmatchedRegisterRecords.length ? `${unmatchedRegisterRecords.length} register entries were not matched back to the attendance spreadsheet.` : 'All register names matched to the attendance spreadsheet.',
+      records: unmatchedRegisterRecords,
+    });
+    checks.push({
+      key: 'zeroStarts',
+      level: zeroStartRecords.length ? 'warn' : 'good',
+      title: 'People on site with zero Safe Starts',
+      message: zeroStartRecords.length ? `${zeroStartRecords.length} attendance rows currently show zero Safe Starts.` : 'Everyone in the filtered attendance set has at least one Safe Start.',
+      records: zeroStartRecords,
+    });
+    state.quality = checks;
+  }
+
+  function sanitiseSheetName(name) {
+    return String(name || 'Sheet').replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31) || 'Sheet';
+  }
+
+  function rowsToTableColumns(rows) {
+    const headers = rows.length ? Object.keys(rows[0]) : ['Value'];
+    return headers.map(key => ({ name: key, filterButton: true }));
+  }
+
+  function rowsToTableData(rows) {
+    const headers = rows.length ? Object.keys(rows[0]) : ['Value'];
+    return rows.map(row => headers.map(key => row[key] ?? ''));
+  }
+
+  async function saveWorkbookBuffer(workbook, filename) {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function addExcelTableSheet(workbook, rows, sheetName, tableNameBase) {
+    const worksheet = workbook.addWorksheet(sanitiseSheetName(sheetName));
+    const safeRows = rows.length ? rows : [{ 'No Data': '' }];
+    const headers = Object.keys(safeRows[0]);
+
+    headers.forEach((header, index) => {
+      const columnValues = safeRows.map(row => String(row[header] ?? ''));
+      const maxLen = Math.max(String(header).length, ...columnValues.map(v => v.length));
+      worksheet.getColumn(index + 1).width = Math.min(Math.max(maxLen + 2, 12), 40);
+    });
+
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+    worksheet.addTable({
+      name: `${tableNameBase}_${Math.random().toString(36).slice(2, 8)}`.replace(/[^A-Za-z0-9_]/g, '_'),
+      ref: 'A1',
+      headerRow: true,
+      style: {
+        theme: 'TableStyleMedium2',
+        showRowStripes: true,
+      },
+      columns: rowsToTableColumns(safeRows),
+      rows: rowsToTableData(safeRows),
+    });
+  }
+
+  async function exportQualityChecks() {
+    if (!state.quality.length) {
+      alert('No quality check data to export yet.');
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Safe Start Analyser';
+    workbook.created = new Date();
+
+    const summaryRows = state.quality.map(item => ({
+      CheckKey: item.key || '',
+      CheckTitle: item.title || '',
+      Level: item.level || '',
+      Message: item.message || '',
+      RecordCount: Array.isArray(item.records) ? item.records.length : 0,
+    }));
+    addExcelTableSheet(workbook, summaryRows, 'Quality Summary', 'QualitySummary');
+
+    state.quality.forEach(item => {
+      const rows = Array.isArray(item.records) && item.records.length
+        ? item.records.map(record => ({
+            CheckKey: item.key || '',
+            CheckTitle: item.title || '',
+            Level: item.level || '',
+            Message: item.message || '',
+            ...record,
+          }))
+        : [{
+            CheckKey: item.key || '',
+            CheckTitle: item.title || '',
+            Level: item.level || '',
+            Message: item.message || '',
+          }];
+      addExcelTableSheet(workbook, rows, item.title || 'Quality Check', item.key || 'QualityCheck');
+    });
+
+    await saveWorkbookBuffer(workbook, `safe-start-quality-checks-${new Date().toISOString().slice(0,10)}.xlsx`);
+    log('Quality checks exported.');
+  }
+
+  async function exportWorkbook() {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Safe Start Analyser';
+    workbook.created = new Date();
+
+    const safeStartsData = state.safeStarts.map(r => ({
+      'File Name': r.File,
+      SafeStartNo: r.SafeStartNo,
+      Date: r.Date,
+      Time: r.Time,
+      Project: r.Project,
+      HeaderProjectLine: r.HeaderProjectLine,
+      SubmittedBy: r.SubmittedBy,
+      Employer: r.Employer,
+      Category: r.Category,
+      LocationTask: r.LocationTask,
+      DiscussionPoints: r.DiscussionPoints,
+      Outcomes: r.Outcomes,
+      AttendeeCount: r.AttendeeCount,
+      Confidence: r.Confidence,
+      Notes: r.Notes.join(' | '),
+    }));
+    const attendanceData = state.attendanceComparison.map(r => ({
+      Date: r.Date,
+      Project: r.Project,
+      Name: r.Name,
+      Company: r.Company,
+      JobRole: r.JobRole || '',
+      InTime: r.InTime,
+      OutTime: r.OutTime,
+      SafeStartCount: r.SafeStartCount,
+      MatchedSafeStartNos: r.MatchedSafeStartNos.join(', '),
+      MatchedEmployers: r.MatchedEmployers.join(', '),
+      MatchMethod: r.MatchMethod,
+    }));
+    const registerData = state.registerRows.map(r => ({ ...r }));
+
+    addExcelTableSheet(workbook, safeStartsData, 'Safe Starts', 'SafeStarts');
+    addExcelTableSheet(workbook, attendanceData, 'Safe Start Attendance', 'SafeStartAttendance');
+    addExcelTableSheet(workbook, registerData, 'Register', 'Register');
+
+    await saveWorkbookBuffer(workbook, `safe-start-analysis-${new Date().toISOString().slice(0,10)}.xlsx`);
+    log('Workbook exported.');
+  }
+
+  async function saveToDatabase() {
+    if (!state.safeStarts.length) {
+      alert('No results to save. Please process files first.');
+      return;
+    }
+    const selectedIndex = Number(els.projectSelect.value);
+    const selectedProject = Number.isInteger(selectedIndex) && selectedIndex >= 0 ? (state.projects?.[selectedIndex] || null) : null;
+    els.saveDbBtn.disabled = true;
+    showDbBanner('loading', `Saving ${state.safeStarts.length} Safe Starts, ${state.attendanceComparison.length} attendance rows and ${state.registerRows.length} register rows to database…`);
+    try {
+      const resp = await fetch('/api/safestart/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ safeStarts: state.safeStarts, registerRows: state.registerRows, attendanceComparison: state.attendanceComparison, project: selectedProject }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+        throw new Error(err.error || resp.statusText);
+      }
+      const result = await resp.json();
+      const ssMsg = `Safe Starts: ${result.safeStarts.inserted} new, ${result.safeStarts.updated} updated, ${result.safeStarts.skipped} skipped`;
+      const regMsg = `Register: ${result.register.inserted} new, ${result.register.updated} updated, ${result.register.skipped} skipped`;
+      const attMsg = `Attendance: ${result.attendance.inserted} new, ${result.attendance.updated} updated, ${result.attendance.skipped} skipped`;
+      showDbBanner('success', `${ssMsg} | ${attMsg} | ${regMsg}`);
+      log(`Database: ${ssMsg}. ${attMsg}. ${regMsg}.`);
+    } catch (err) {
+      showDbBanner('error', `Save failed: ${err.message}`);
+      log(`Database save error: ${err.message}`);
+    } finally {
+      els.saveDbBtn.disabled = false;
+    }
+  }
+
+  async function processFiles() {
+    resetLog();
+    state.safeStarts = [];
+    state.registerRows = [];
+    state.attendanceComparison = [];
+    state.quality = [];
+    state.qualityExpanded = {};
+    state.duplicateRows = [];
+    state.activeQualityKey = null;
+    renderQualityChecks();
+    hideDbBanner();
+
+    if (!state.excelFile) {
+      alert('Please select an attendance Excel file.');
+      return;
+    }
+    if (!state.pdfFiles.length) {
+      alert('Please select at least one Safe Start PDF.');
+      return;
+    }
+
+    try {
+      els.processBtn.disabled = true;
+      els.exportBtn.disabled = true;
+      els.exportQualityBtn.disabled = true;
+      els.saveDbBtn.disabled = true;
+
+      state.attendanceRows = await parseExcel(state.excelFile);
+      const parsedStarts = [];
+      for (const file of state.pdfFiles) {
+        parsedStarts.push(await parseSafeStartPdf(file));
+      }
+      const deduped = dedupeSafeStarts(parsedStarts.sort((a, b) => (a.Date + a.Time).localeCompare(b.Date + b.Time)));
+      state.safeStarts = deduped.kept;
+      state.duplicateRows = deduped.duplicates;
+      rebuildDateFilter();
+      buildAttendanceComparison();
+      buildQualityChecks();
+      renderQualityChecks();
+      els.zeroStartsOnlyToggle.checked = false;
+      state.attendanceOnlyZeroStarts = false;
+      refreshVisibleTables();
+      els.exportBtn.disabled = false;
+      els.exportQualityBtn.disabled = false;
+      els.saveDbBtn.disabled = false;
+      log(`Processing complete. ${state.safeStarts.length} Safe Start files analysed.`);
+    } catch (error) {
+      console.error(error);
+      log(`Error: ${error.message}`);
+      alert(`Processing failed: ${error.message}`);
+    } finally {
+      els.processBtn.disabled = false;
+    }
+  }
+
+  function clearResults() {
+    state.excelFile = null;
+    state.pdfFiles = [];
+    state.attendanceRows = [];
+    state.safeStarts = [];
+    state.registerRows = [];
+    state.attendanceComparison = [];
+    state.quality = [];
+    state.qualityExpanded = {};
+    state.duplicateRows = [];
+    state.attendanceSort = { key: 'Date', dir: 'asc' };
+    state.attendanceColumnFilters = {};
+    state.attendanceOnlyZeroStarts = false;
+    els.projectFilterInput.value = '';
+    els.dateFilterSelect.innerHTML = '<option value="">All parsed Safe Start dates</option>';
+    els.nameMatchMode.value = 'strict';
+    els.zeroStartsOnlyToggle.checked = false;
+    els.excelInput.value = '';
+    els.pdfInput.value = '';
+    resetLog();
+    log('Results cleared.');
+    renderFileList();
+    renderQualityChecks();
+    refreshVisibleTables();
+    els.exportBtn.disabled = true;
+    els.exportQualityBtn.disabled = true;
+    els.saveDbBtn.disabled = true;
+    hideDbBanner();
+  }
+
+  els.processBtn.addEventListener('click', processFiles);
+  els.exportBtn.addEventListener('click', exportWorkbook);
+  els.exportQualityBtn.addEventListener('click', exportQualityChecks);
+  els.saveDbBtn.addEventListener('click', saveToDatabase);
+  els.clearBtn.addEventListener('click', clearResults);
+
+  renderFileList();
+  renderQualityChecks();
+  refreshVisibleTables();
+  loadProjects();
+</script>
+</body>
+</html>
