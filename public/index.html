@@ -712,6 +712,11 @@
 </div>
 
 <script>
+  const RENDER_URL = 'https://inndex-tools.onrender.com/';
+  if (window.location.hostname.endsWith('github.io')) {
+    window.location.replace(RENDER_URL);
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────
 
   const navItems = document.querySelectorAll('.nav-item');

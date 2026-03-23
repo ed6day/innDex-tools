@@ -44,11 +44,17 @@
   </main>
   <script>
     (function setHubLink() {
+      const RENDER_URL = 'https://inndex-tools.onrender.com/';
       const link = document.getElementById('hubLink');
       if (!link) return;
-      const parts = window.location.pathname.split('/').filter(Boolean);
-      const repoBase = window.location.hostname.endsWith('github.io') && parts.length ? `/${parts[0]}` : '';
-      link.setAttribute('href', `${repoBase}/public/index.html`);
+      if (window.location.hostname.endsWith('github.io')) {
+        link.setAttribute('href', RENDER_URL);
+        setTimeout(() => {
+          window.location.replace(RENDER_URL);
+        }, 1200);
+        return;
+      }
+      link.setAttribute('href', '/public/index.html');
     })();
   </script>
 </body>
