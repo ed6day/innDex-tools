@@ -22,23 +22,23 @@ public static class StateHttpClient
 
     public static async Task PostStateAsync(GameStateDto dto)
     {
-        await PostJsonAsync("/api/sts2/state", new { eventType = dto.EventType, state = dto });
+        await PostJsonAsync("/api/state", new { eventType = dto.EventType, state = dto });
     }
 
     public static async Task PostCombatStartAsync(string combatId, string character, int floorNumber, IEnumerable<string> enemySet, int startHp)
     {
-        await PostJsonAsync("/api/sts2/combat/start", new { combatId, character, floorNumber, enemySet, startHp });
+        await PostJsonAsync("/api/combat/start", new { combatId, character, floorNumber, enemySet, startHp });
     }
 
     public static async Task PostCombatEndAsync(string combatId, int endHp, string outcome)
     {
-        await PostJsonAsync("/api/sts2/combat/end", new { combatId, endHp, outcome });
+        await PostJsonAsync("/api/combat/end", new { combatId, endHp, outcome });
     }
 
     public static async Task PostTurnAsync(string combatId, int turnNumber, int energyAvailable, int energyUsed,
         IEnumerable<string> cardsPlayed, int blockGained, int damageDealt, int damageTaken)
     {
-        await PostJsonAsync("/api/sts2/turn", new
+        await PostJsonAsync("/api/turn", new
         {
             combatId, turnNumber, energyAvailable, energyUsed,
             cardsPlayed, blockGained, damageDealt, damageTaken
@@ -47,18 +47,18 @@ public static class StateHttpClient
 
     public static async Task PostRunStartAsync(string runId, string character, int ascensionLevel)
     {
-        await PostJsonAsync("/api/sts2/run/start", new { runId, character, ascensionLevel });
+        await PostJsonAsync("/api/run/start", new { runId, character, ascensionLevel });
     }
 
     public static async Task PostRunEndAsync(string runId, string outcome, int score, int floorReached,
         string? causeOfDeath, IEnumerable<string> relics)
     {
-        await PostJsonAsync("/api/sts2/run/end", new { runId, outcome, score, floorReached, causeOfDeath, relics });
+        await PostJsonAsync("/api/run/end", new { runId, outcome, score, floorReached, causeOfDeath, relics });
     }
 
     public static async Task PostDeckSnapshotAsync(string runId, int floor, string snapshotTrigger, IEnumerable<CardDto> deck)
     {
-        await PostJsonAsync("/api/sts2/run/deck-snapshot", new { runId, floor, snapshotTrigger, deck });
+        await PostJsonAsync("/api/run/deck-snapshot", new { runId, floor, snapshotTrigger, deck });
     }
 
     private static async Task PostJsonAsync(string path, object payload)

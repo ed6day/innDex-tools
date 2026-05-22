@@ -2,6 +2,9 @@ node_modules/
 db/*.db
 db/*.db-shm
 db/*.db-wal
+sts2-helper/db/*.db
+sts2-helper/db/*.db-shm
+sts2-helper/db/*.db-wal
 .DS_Store
 *.xlsx
 *.xls

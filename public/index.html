@@ -328,10 +328,6 @@
         <span class="icon">🗄️</span> Records
       </div>
 
-      <div class="nav-section" style="margin-top:10px;">Gaming</div>
-      <div class="nav-item" data-view="sts2">
-        <span class="icon">🗡️</span> STS2 Helper
-      </div>
     </nav>
 
     <div class="db-status" id="dbStatus">
@@ -362,15 +358,6 @@
       data-src="./safe_start_analyser.html"
       allow="clipboard-write"
       title="Safe Start Analyser"
-    ></iframe>
-
-    <!-- STS2 iframe -->
-    <iframe
-      id="sts2Pane"
-      class="tool-pane"
-      src=""
-      data-src="./sts2-dashboard.html"
-      title="STS2 Decision Helper"
     ></iframe>
 
     <!-- Records pane -->
@@ -735,9 +722,8 @@
 
   const navItems = document.querySelectorAll('.nav-item');
   const iframeMap = {
-    rams:     document.getElementById('ramsPane'),
+    rams:      document.getElementById('ramsPane'),
     safestart: document.getElementById('safestartPane'),
-    sts2:     document.getElementById('sts2Pane'),
   };
   const recordsPane = document.getElementById('recordsPane');
 

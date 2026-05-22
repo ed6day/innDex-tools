@@ -160,8 +160,8 @@ Write-Host ""
 Write-Host "  Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Start the Node server: open a new terminal, cd to innDex-tools, run 'npm start'" -ForegroundColor White
-Write-Host "  2. Open the dashboard:    http://localhost:3000/sts2-dashboard.html" -ForegroundColor White
+Write-Host "  1. Start the Node server: open a new terminal, cd to sts2-helper, run 'npm install' then 'npm start'" -ForegroundColor White
+Write-Host "  2. Open the dashboard:    http://localhost:3000/" -ForegroundColor White
 Write-Host "  3. Launch STS2 - the dashboard updates live as you play" -ForegroundColor White
 Write-Host ""
 Write-Host "  NOTE: GameStateSerializer.cs has TODO stubs for game state properties." -ForegroundColor Yellow
