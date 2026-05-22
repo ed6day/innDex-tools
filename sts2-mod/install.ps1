@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     1. Checks for .NET 9 SDK
-    2. Downloads and installs ModSmith (game mod framework) into STS2's mods folder
-    3. Downloads and installs RitsuLib (hook framework) into STS2's mods folder
+    2. Downloads and installs ModSmith into STS2's mods folder
+    3. Downloads and installs RitsuLib into STS2's mods folder
     4. Builds STS2DecisionHelper and deploys it to the mods folder
 
 .NOTES
@@ -15,14 +15,14 @@
 #>
 
 $ErrorActionPreference = "Stop"
-$ProgressPreference    = "SilentlyContinue"  # speeds up Invoke-WebRequest
+$ProgressPreference    = "SilentlyContinue"
 
 Write-Host ""
-Write-Host "  STS2 Decision Helper — Installer" -ForegroundColor Cyan
-Write-Host "  ==================================" -ForegroundColor Cyan
+Write-Host "  STS2 Decision Helper -- Installer" -ForegroundColor Cyan
+Write-Host "  ===================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── 1. Check .NET 9 SDK ───────────────────────────────────────────────────────
+# --- 1. Check .NET 9 SDK -----------------------------------------------------
 
 Write-Host "[1/4] Checking .NET SDK..." -ForegroundColor Yellow
 try {
@@ -39,7 +39,7 @@ if (-not $dotnetVer.StartsWith("9.")) {
 }
 Write-Host "  .NET $dotnetVer OK" -ForegroundColor Green
 
-# ── 2. Find STS2 installation ─────────────────────────────────────────────────
+# --- 2. Find STS2 installation ------------------------------------------------
 
 Write-Host "[2/4] Locating Slay the Spire 2..." -ForegroundColor Yellow
 
@@ -59,7 +59,7 @@ if (-not $sts2Path) {
     Write-Host "  ERROR: STS2 not found in any of these locations:" -ForegroundColor Red
     $candidates | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
     Write-Host ""
-    Write-Host "  Fix: open sts2-mod\Directory.Build.props and uncomment the SteamLibraryPath line." -ForegroundColor Yellow
+    Write-Host "  Fix: open Directory.Build.props and uncomment the SteamLibraryPath line." -ForegroundColor Yellow
     exit 1
 }
 
@@ -71,7 +71,7 @@ if (-not (Test-Path $modsPath)) {
     Write-Host "  Created mods folder: $modsPath" -ForegroundColor Green
 }
 
-# ── 3. Download and install ModSmith ─────────────────────────────────────────
+# --- 3. Download and install mod frameworks ----------------------------------
 
 Write-Host "[3/4] Installing mod frameworks..." -ForegroundColor Yellow
 
@@ -93,7 +93,7 @@ function Install-ModZip {
     try {
         Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
     } catch {
-        Write-Host "  ERROR downloading $Name : $_" -ForegroundColor Red
+        Write-Host "  ERROR downloading $Name`: $_" -ForegroundColor Red
         exit 1
     }
 
@@ -101,27 +101,24 @@ function Install-ModZip {
     if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
     Expand-Archive -Path $zip -DestinationPath $extract -Force
 
-    # Find the mod folder inside the zip (first folder that contains a .json manifest)
+    # Find the mod folder inside the zip (folder that contains the .json manifest)
     $modFolder = Get-ChildItem $extract -Recurse -Filter "*.json" |
                  Where-Object { $_.BaseName -eq $ModFolderName } |
                  Select-Object -First 1 |
                  ForEach-Object { $_.Directory }
 
     if (-not $modFolder) {
-        # Fallback: use the first subdirectory
         $modFolder = Get-ChildItem $extract -Directory | Select-Object -First 1
     }
-
     if (-not $modFolder) {
-        # Last resort: use the extract root
-        $modFolder = $extract
+        $modFolder = Get-Item $extract
     }
 
     if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
     Copy-Item $modFolder.FullName -Destination $dest -Recurse -Force
     Write-Host "  $Name installed to: $dest" -ForegroundColor Green
 
-    Remove-Item $zip    -Force -ErrorAction SilentlyContinue
+    Remove-Item $zip     -Force -ErrorAction SilentlyContinue
     Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -133,7 +130,7 @@ Install-ModZip -Name "STS2-RitsuLib" `
                -Url "https://github.com/BAKAOLC/STS2-RitsuLib/releases/download/v0.3.0/STS2-RitsuLib.0.3.0.variant-pack.zip" `
                -ModFolderName "STS2-RitsuLib"
 
-# ── 4. Build and install our mod ──────────────────────────────────────────────
+# --- 4. Build and install our mod --------------------------------------------
 
 Write-Host "[4/4] Building STS2 Decision Helper..." -ForegroundColor Yellow
 
@@ -141,9 +138,10 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $scriptDir
 try {
     & dotnet build -c Release --nologo 2>&1 | ForEach-Object {
-        if ($_ -match "error") { Write-Host "  $_" -ForegroundColor Red }
-        elseif ($_ -match "warning") { Write-Host "  $_" -ForegroundColor Yellow }
-        else { Write-Host "  $_" -ForegroundColor DarkGray }
+        $line = "$_"
+        if ($line -match " error ") { Write-Host "  $line" -ForegroundColor Red }
+        elseif ($line -match " warning ") { Write-Host "  $line" -ForegroundColor Yellow }
+        elseif ($line.Trim() -ne "") { Write-Host "  $line" -ForegroundColor DarkGray }
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
@@ -156,16 +154,16 @@ try {
     Pop-Location
 }
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# --- Done --------------------------------------------------------------------
 
 Write-Host ""
 Write-Host "  Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Start the Node server:  cd ..\  &&  npm start" -ForegroundColor White
-Write-Host "  2. Open the dashboard:     http://localhost:3000/sts2-dashboard.html" -ForegroundColor White
-Write-Host "  3. Launch STS2 — the dashboard updates live as you play" -ForegroundColor White
+Write-Host "  1. Start the Node server: open a new terminal, cd to innDex-tools, run 'npm start'" -ForegroundColor White
+Write-Host "  2. Open the dashboard:    http://localhost:3000/sts2-dashboard.html" -ForegroundColor White
+Write-Host "  3. Launch STS2 - the dashboard updates live as you play" -ForegroundColor White
 Write-Host ""
-Write-Host "  NOTE: GameStateSerializer.cs has TODO stubs for reading game state." -ForegroundColor Yellow
-Write-Host "  Use ILSpy or the STS2 Modding MCP to browse sts2.dll and fill them in." -ForegroundColor Yellow
+Write-Host "  NOTE: GameStateSerializer.cs has TODO stubs for game state properties." -ForegroundColor Yellow
+Write-Host "  Use ILSpy or dnSpy to browse sts2.dll and fill them in." -ForegroundColor Yellow
 Write-Host ""
