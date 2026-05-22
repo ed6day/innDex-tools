@@ -154,6 +154,68 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sts2_state_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type  TEXT NOT NULL,
+    state_json  TEXT NOT NULL,
+    created_at  TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sts2_combats (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    combat_id      TEXT NOT NULL UNIQUE,
+    character      TEXT,
+    floor_number   INTEGER,
+    enemy_set      TEXT,
+    start_hp       INTEGER,
+    end_hp         INTEGER,
+    hp_delta       INTEGER,
+    outcome        TEXT,
+    turns_taken    INTEGER,
+    started_at     TEXT DEFAULT (datetime('now')),
+    ended_at       TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS sts2_turns (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    combat_id        TEXT NOT NULL REFERENCES sts2_combats(combat_id),
+    turn_number      INTEGER NOT NULL,
+    energy_available INTEGER,
+    energy_used      INTEGER,
+    cards_played     TEXT,
+    block_gained     INTEGER,
+    damage_dealt     INTEGER,
+    damage_taken     INTEGER,
+    created_at       TEXT DEFAULT (datetime('now')),
+    UNIQUE(combat_id, turn_number)
+  );
+
+  CREATE TABLE IF NOT EXISTS sts2_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL UNIQUE,
+    character       TEXT,
+    score           INTEGER,
+    floor_reached   INTEGER,
+    ascension_level INTEGER,
+    outcome         TEXT,
+    cause_of_death  TEXT,
+    relics          TEXT,
+    started_at      TEXT,
+    ended_at        TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sts2_run_decks (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id           TEXT NOT NULL REFERENCES sts2_runs(run_id),
+    floor            INTEGER NOT NULL,
+    snapshot_trigger TEXT,
+    deck_json        TEXT NOT NULL,
+    created_at       TEXT DEFAULT (datetime('now')),
+    UNIQUE(run_id, floor, snapshot_trigger)
+  );
+`);
+
 function ensureColumn(tableName, columnName, columnType) {
   const cols = db.prepare(`PRAGMA table_info(${tableName})`).all();
   if (!cols.some(c => c.name === columnName)) {
@@ -1175,9 +1237,180 @@ app.get('/api/reports/export', (req, res) => {
   }
 });
 
+// ─── STS2 Routes ──────────────────────────────────────────────────────────────
+
+let latestSts2State = null;
+
+app.post('/api/sts2/state', (req, res) => {
+  const { eventType, state } = req.body;
+  if (!eventType || !state) return res.status(400).json({ error: 'eventType and state required' });
+
+  const payload = { eventType, state, timestamp: Date.now() };
+  latestSts2State = payload;
+
+  try {
+    db.prepare('INSERT INTO sts2_state_log (event_type, state_json) VALUES (?, ?)')
+      .run(eventType, JSON.stringify(state));
+  } catch (err) {
+    console.error('[STS2] state log error:', err.message);
+  }
+
+  broadcastSts2(payload);
+  res.json({ ok: true });
+});
+
+app.get('/api/sts2/state/latest', (req, res) => {
+  if (!latestSts2State) return res.status(404).json({ error: 'No state received yet' });
+  res.json(latestSts2State);
+});
+
+app.get('/api/sts2/state/log', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const rows = db.prepare('SELECT * FROM sts2_state_log ORDER BY id DESC LIMIT ?').all(limit);
+  res.json(rows);
+});
+
+app.post('/api/sts2/combat/start', (req, res) => {
+  const { combatId, character, floorNumber, enemySet, startHp } = req.body;
+  if (!combatId) return res.status(400).json({ error: 'combatId required' });
+  try {
+    db.prepare(`INSERT OR IGNORE INTO sts2_combats (combat_id, character, floor_number, enemy_set, start_hp)
+                VALUES (?, ?, ?, ?, ?)`)
+      .run(combatId, character, floorNumber, JSON.stringify(enemySet || []), startHp);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sts2/combat/end', (req, res) => {
+  const { combatId, endHp, outcome } = req.body;
+  if (!combatId) return res.status(400).json({ error: 'combatId required' });
+  try {
+    const turnCount = db.prepare('SELECT COUNT(*) as n FROM sts2_turns WHERE combat_id = ?').get(combatId);
+    const startRow = db.prepare('SELECT start_hp FROM sts2_combats WHERE combat_id = ?').get(combatId);
+    const hpDelta = startRow ? (endHp - startRow.start_hp) : null;
+    db.prepare(`UPDATE sts2_combats SET end_hp=?, hp_delta=?, outcome=?, turns_taken=?, ended_at=datetime('now') WHERE combat_id=?`)
+      .run(endHp, hpDelta, outcome, turnCount?.n ?? 0, combatId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sts2/turn', (req, res) => {
+  const { combatId, turnNumber, energyAvailable, energyUsed, cardsPlayed, blockGained, damageDealt, damageTaken } = req.body;
+  if (!combatId || turnNumber == null) return res.status(400).json({ error: 'combatId and turnNumber required' });
+  try {
+    db.prepare(`INSERT INTO sts2_turns (combat_id, turn_number, energy_available, energy_used, cards_played, block_gained, damage_dealt, damage_taken)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(combat_id, turn_number) DO UPDATE SET
+                  energy_available=excluded.energy_available, energy_used=excluded.energy_used,
+                  cards_played=excluded.cards_played, block_gained=excluded.block_gained,
+                  damage_dealt=excluded.damage_dealt, damage_taken=excluded.damage_taken`)
+      .run(combatId, turnNumber, energyAvailable, energyUsed, JSON.stringify(cardsPlayed || []), blockGained, damageDealt, damageTaken);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sts2/combat/:combatId/turns', (req, res) => {
+  const rows = db.prepare('SELECT * FROM sts2_turns WHERE combat_id = ? ORDER BY turn_number ASC').all(req.params.combatId);
+  res.json(rows);
+});
+
+app.get('/api/sts2/combats', (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(parseInt(req.query.pageSize) || 20, 100);
+  const offset = (page - 1) * pageSize;
+  let where = 'WHERE 1=1';
+  const params = [];
+  if (req.query.outcome) { where += ' AND outcome = ?'; params.push(req.query.outcome); }
+  const total = db.prepare(`SELECT COUNT(*) as n FROM sts2_combats ${where}`).get(...params).n;
+  const rows = db.prepare(`SELECT * FROM sts2_combats ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, pageSize, offset);
+  res.json({ total, page, pageSize, rows });
+});
+
+app.post('/api/sts2/run/start', (req, res) => {
+  const { runId, character, ascensionLevel } = req.body;
+  if (!runId) return res.status(400).json({ error: 'runId required' });
+  try {
+    db.prepare(`INSERT OR IGNORE INTO sts2_runs (run_id, character, ascension_level, started_at) VALUES (?, ?, ?, datetime('now'))`)
+      .run(runId, character, ascensionLevel);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sts2/run/end', (req, res) => {
+  const { runId, outcome, score, floorReached, causeOfDeath, relics } = req.body;
+  if (!runId) return res.status(400).json({ error: 'runId required' });
+  try {
+    db.prepare(`UPDATE sts2_runs SET outcome=?, score=?, floor_reached=?, cause_of_death=?, relics=?, ended_at=datetime('now') WHERE run_id=?`)
+      .run(outcome, score, floorReached, causeOfDeath, JSON.stringify(relics || []), runId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sts2/run/deck-snapshot', (req, res) => {
+  const { runId, floor, snapshotTrigger, deck } = req.body;
+  if (!runId || floor == null) return res.status(400).json({ error: 'runId and floor required' });
+  try {
+    db.prepare(`INSERT OR REPLACE INTO sts2_run_decks (run_id, floor, snapshot_trigger, deck_json) VALUES (?, ?, ?, ?)`)
+      .run(runId, floor, snapshotTrigger, JSON.stringify(deck || []));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sts2/runs', (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(parseInt(req.query.pageSize) || 20, 100);
+  const offset = (page - 1) * pageSize;
+  let where = 'WHERE 1=1';
+  const params = [];
+  if (req.query.character)  { where += ' AND character = ?';        params.push(req.query.character); }
+  if (req.query.outcome)    { where += ' AND outcome = ?';           params.push(req.query.outcome); }
+  if (req.query.ascension)  { where += ' AND ascension_level = ?';   params.push(parseInt(req.query.ascension)); }
+  const total = db.prepare(`SELECT COUNT(*) as n FROM sts2_runs ${where}`).get(...params).n;
+  const rows = db.prepare(`SELECT * FROM sts2_runs ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, pageSize, offset);
+  res.json({ total, page, pageSize, rows });
+});
+
+app.get('/api/sts2/runs/:runId', (req, res) => {
+  const run = db.prepare('SELECT * FROM sts2_runs WHERE run_id = ?').get(req.params.runId);
+  if (!run) return res.status(404).json({ error: 'Run not found' });
+  const decks = db.prepare('SELECT * FROM sts2_run_decks WHERE run_id = ? ORDER BY floor ASC').all(req.params.runId);
+  const combats = db.prepare('SELECT * FROM sts2_combats WHERE combat_id LIKE ? ORDER BY id ASC').all(`${req.params.runId}%`);
+  res.json({ run, decks, combats });
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, '0.0.0.0', () => {
+const http = require('http');
+const { WebSocketServer } = require('ws');
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+function broadcastSts2(payload) {
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach(client => {
+    if (client.readyState === client.OPEN) client.send(msg);
+  });
+}
+
+wss.on('connection', (ws) => {
+  if (latestSts2State) ws.send(JSON.stringify(latestSts2State));
+  ws.on('error', (err) => console.error('[STS2 WS]', err.message));
+});
+
+server.listen(PORT, '0.0.0.0', () => {
   const { networkInterfaces } = require('os');
   const nets = networkInterfaces();
   const ips = [];

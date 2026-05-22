@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>STS2DecisionHelper</AssemblyName>
+    <RootNamespace>STS2DecisionHelper</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    ModSmith injects RitsuLib, BaseLib, and MegaDot (Godot) references at build time.
+    Run `modsmith build` from this directory — do not use `dotnet build` directly.
+    Ref: https://github.com/cpimhoff/Sts2-ModSmith/blob/main/docsite/docs/setup/guided.md
+  -->
+</Project>
