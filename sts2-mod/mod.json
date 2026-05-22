@@ -1,10 +1,10 @@
 {
-  "id":          "sts2-decision-helper",
-  "name":        "STS2 Decision Helper",
-  "description": "Streams live game state to a local web dashboard. Shows hand analysis, draw probabilities, enemy intent decoding, and run history. Run the innDex-tools server (npm start) and open http://localhost:3000/sts2-dashboard.html in a second monitor.",
-  "version":     "0.1.0",
-  "author":      "ed6day",
-  "dependencies": {
-    "RitsuLib": "*"
-  }
+  "id": "STS2DecisionHelper",
+  "name": "STS2 Decision Helper",
+  "version": "0.1.0",
+  "description": "Streams live game state to a local web dashboard. Open http://localhost:3000/sts2-dashboard.html in a browser while playing for real-time hand analysis, draw probability, enemy intent decoding, and run history.",
+  "affects_gameplay": false,
+  "dependencies": [
+    { "id": "STS2-RitsuLib" }
+  ]
 }

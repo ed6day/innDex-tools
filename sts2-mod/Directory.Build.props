@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    If Steam or STS2 is in a non-standard location, uncomment and set the path below.
+    Use forward slashes. Example:
+      <SteamLibraryPath>D:/SteamLibrary/steamapps</SteamLibraryPath>
+  -->
+  <!--
+  <PropertyGroup>
+    <SteamLibraryPath>C:/Program Files (x86)/Steam/steamapps</SteamLibraryPath>
+  </PropertyGroup>
+  -->
+</Project>

@@ -1,162 +1,167 @@
-// ╔══════════════════════════════════════════════════════════════════╗
-// ║  STS2 Decision Helper — ModMain                                  ║
-// ║  Built with ModSmith + RitsuLib for Slay the Spire 2             ║
-// ║                                                                  ║
-// ║  IMPORTANT: Hook names and event argument types are based on     ║
-// ║  STS2 modding conventions. Verify exact names against the        ║
-// ║  RitsuLib source before building:                                ║
-// ║    https://github.com/BAKAOLC/STS2-RitsuLib                     ║
-// ╚══════════════════════════════════════════════════════════════════╝
-
-using STS2DecisionHelper.Models;
+using System.Reflection;
+using MegaCrit.Sts2.Core.Logging;
+using MegaCrit.Sts2.Core.Modding;
+using STS2RitsuLib;
+using STS2RitsuLib.Interop;
 
 namespace STS2DecisionHelper;
 
-[ModInitializer]
-public class ModMain
+[ModInitializer(nameof(Initialize))]
+public static class ModMain
 {
+    public const string ModId = "STS2DecisionHelper";
+    public static Logger Logger { get; private set; } = null!;
+
     public static void Initialize()
     {
+        var assembly = Assembly.GetExecutingAssembly();
+        Logger = RitsuLibFramework.CreateLogger(ModId);
+        ModTypeDiscoveryHub.RegisterModAssembly(ModId, assembly);
+
         StateHttpClient.Initialize("http://localhost:3000");
 
-        // ── Run lifecycle ──────────────────────────────────────────
-        RitsuLib.Events.OnRunStart   += OnRunStart;
-        RitsuLib.Events.OnRunEnd     += OnRunEnd;
-        RitsuLib.Events.OnFloorEntry += OnFloorEntry;
+        // ── Run lifecycle ──────────────────────────────────────────────────
+        RitsuLibFramework.SubscribeLifecycle<RunStartedEvent>(OnRunStarted);
+        RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(OnRunEnded);
+        RitsuLibFramework.SubscribeLifecycle<RoomEnteredEvent>(OnRoomEntered);
 
-        // ── Combat lifecycle ───────────────────────────────────────
-        RitsuLib.Events.OnCombatStart += OnCombatStart;
-        RitsuLib.Events.OnCombatEnd   += OnCombatEnd;
+        // ── Combat lifecycle ───────────────────────────────────────────────
+        RitsuLibFramework.SubscribeLifecycle<CombatStartingEvent>(OnCombatStarting);
+        RitsuLibFramework.SubscribeLifecycle<CombatEndedEvent>(OnCombatEnded);
+        RitsuLibFramework.SubscribeLifecycle<CombatVictoryEvent>(OnCombatVictory);
 
-        // ── Turn lifecycle ─────────────────────────────────────────
-        RitsuLib.Events.OnTurnStart += OnTurnStart;
-        RitsuLib.Events.OnTurnEnd   += OnTurnEnd;
+        // ── Turn lifecycle ─────────────────────────────────────────────────
+        RitsuLibFramework.SubscribeLifecycle<SideTurnStartingEvent>(OnTurnStarting);
+        RitsuLibFramework.SubscribeLifecycle<SideTurnStartedEvent>(OnTurnStarted);
 
-        // ── Card events ────────────────────────────────────────────
-        RitsuLib.Events.OnCardDrawn  += OnCardDrawn;
-        RitsuLib.Events.OnCardPlayed += OnCardPlayed;
+        // ── Card events ────────────────────────────────────────────────────
+        RitsuLibFramework.SubscribeLifecycle<CardPlayedEvent>(OnCardPlayed);
+        RitsuLibFramework.SubscribeLifecycle<CardDrawnEvent>(OnCardDrawn);
 
-        // ── Enemy events ───────────────────────────────────────────
-        RitsuLib.Events.OnEnemyIntentSet += OnEnemyIntentSet;
+        Logger.Info($"[{ModId}] Initialised — streaming to http://localhost:3000");
     }
 
-    // ── Run handlers ──────────────────────────────────────────────────────────
+    // ── Run handlers ───────────────────────────────────────────────────────────
 
-    private static void OnRunStart(RunStartEvent e)
+    private static void OnRunStarted(RunStartedEvent evt)
     {
         var runId = $"run-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
-        RunTracker.StartRun(runId, e.GameState.Player.CharacterName, e.AscensionLevel);
+        RunTracker.StartRun(runId, evt.RunState);
         _ = StateHttpClient.PostRunStartAsync(runId, RunTracker.Character, RunTracker.AscensionLevel);
-        PostState("run_start", e.GameState);
+        PostState("run_start", evt.RunState);
     }
 
-    private static void OnRunEnd(RunEndEvent e)
+    private static void OnRunEnded(RunEndedEvent evt)
     {
         if (RunTracker.CurrentRunId is null) return;
         _ = StateHttpClient.PostRunEndAsync(
             RunTracker.CurrentRunId,
-            e.Outcome.ToString().ToLowerInvariant(),
-            e.Score,
+            GameStateSerializer.GetRunOutcome(evt),
+            GameStateSerializer.GetScore(evt.RunState),
             RunTracker.CurrentFloor,
-            e.CauseOfDeath,
-            e.GameState.Relics.Select(r => r.DisplayName));
+            GameStateSerializer.GetCauseOfDeath(evt),
+            GameStateSerializer.GetRelicNames(evt.RunState));
         RunTracker.EndRun();
-        PostState("run_end", e.GameState);
+        PostState("run_end", evt.RunState);
     }
 
-    private static void OnFloorEntry(FloorEntryEvent e)
+    private static void OnRoomEntered(RoomEnteredEvent evt)
     {
-        RunTracker.SetFloor(e.FloorNumber);
+        RunTracker.SetFloor(GameStateSerializer.GetFloor(evt.RunState));
         if (RunTracker.CurrentRunId is not null)
         {
             _ = StateHttpClient.PostDeckSnapshotAsync(
                 RunTracker.CurrentRunId,
-                e.FloorNumber,
+                RunTracker.CurrentFloor,
                 "floor_entry",
-                e.GameState.DrawPile
-                    .Concat(e.GameState.Hand)
-                    .Concat(e.GameState.DiscardPile)
-                    .Select(c => GameStateSerializer.MapCardPublic(c)));
+                GameStateSerializer.GetFullDeck(evt.RunState));
         }
-        PostState("floor_entry", e.GameState);
+        PostState("room_entered", evt.RunState);
     }
 
-    // ── Combat handlers ───────────────────────────────────────────────────────
+    // ── Combat handlers ────────────────────────────────────────────────────────
 
-    private static void OnCombatStart(CombatStartEvent e)
+    private static void OnCombatStarting(CombatStartingEvent evt)
     {
         var combatId = $"{RunTracker.CurrentRunId ?? "unknown"}-floor-{RunTracker.CurrentFloor}";
-        var enemies  = e.GameState.Enemies.Select(en => en.DisplayName).ToList();
-        CombatTracker.StartCombat(combatId, e.GameState.Player.CurrentHp);
-        _ = StateHttpClient.PostCombatStartAsync(combatId, RunTracker.Character, RunTracker.CurrentFloor, enemies, e.GameState.Player.CurrentHp);
-        PostState("combat_start", e.GameState);
+        CombatTracker.StartCombat(combatId, GameStateSerializer.GetPlayerHp(evt.RunState));
+        _ = StateHttpClient.PostCombatStartAsync(
+            combatId,
+            RunTracker.Character,
+            RunTracker.CurrentFloor,
+            GameStateSerializer.GetEnemyNames(evt.RunState),
+            CombatTracker.StartHp);
+        PostState("combat_start", evt.RunState);
     }
 
-    private static void OnCombatEnd(CombatEndEvent e)
+    private static void OnCombatEnded(CombatEndedEvent evt)
     {
         if (CombatTracker.CurrentCombatId is null) return;
-        var outcome = e.Victory ? "win" : "lose";
-        _ = StateHttpClient.PostCombatEndAsync(CombatTracker.CurrentCombatId, e.GameState.Player.CurrentHp, outcome);
+        _ = StateHttpClient.PostCombatEndAsync(
+            CombatTracker.CurrentCombatId,
+            GameStateSerializer.GetPlayerHp(evt.RunState),
+            "lose");
         CombatTracker.EndCombat();
-        PostState("combat_end", e.GameState);
+        PostState("combat_end", evt.RunState);
     }
 
-    // ── Turn handlers ─────────────────────────────────────────────────────────
-
-    private static void OnTurnStart(TurnStartEvent e)
+    private static void OnCombatVictory(CombatVictoryEvent evt)
     {
-        CombatTracker.StartTurn(e.GameState.Energy, e.GameState.Player.CurrentHp, e.GameState.Player.Block);
-        PostState("turn_start", e.GameState);
+        if (CombatTracker.CurrentCombatId is null) return;
+        _ = StateHttpClient.PostCombatEndAsync(
+            CombatTracker.CurrentCombatId,
+            GameStateSerializer.GetPlayerHp(evt.RunState),
+            "win");
+        CombatTracker.EndCombat();
+        PostState("combat_victory", evt.RunState);
     }
 
-    private static void OnTurnEnd(TurnEndEvent e)
+    // ── Turn handlers ──────────────────────────────────────────────────────────
+
+    private static void OnTurnStarting(SideTurnStartingEvent evt)
     {
-        if (CombatTracker.CurrentCombatId is not null)
+        CombatTracker.StartTurn(
+            GameStateSerializer.GetEnergy(evt.RunState),
+            GameStateSerializer.GetPlayerHp(evt.RunState),
+            GameStateSerializer.GetBlock(evt.RunState));
+        PostState("turn_start", evt.RunState);
+    }
+
+    private static void OnTurnStarted(SideTurnStartedEvent evt)
+    {
+        // Hand is fully drawn at this point — send a second update
+        PostState("turn_ready", evt.RunState);
+    }
+
+    // ── Card handlers ──────────────────────────────────────────────────────────
+
+    private static void OnCardPlayed(CardPlayedEvent evt)
+    {
+        CombatTracker.RecordCardPlayed(GameStateSerializer.GetCardId(evt));
+        PostState("card_played", evt.RunState);
+    }
+
+    private static void OnCardDrawn(CardDrawnEvent evt)
+    {
+        PostState("card_drawn", evt.RunState);
+    }
+
+    // ── Shared helper ──────────────────────────────────────────────────────────
+
+    private static void PostState(string eventType, object runState)
+    {
+        try
         {
-            _ = StateHttpClient.PostTurnAsync(
-                CombatTracker.CurrentCombatId,
-                CombatTracker.CurrentTurn,
-                CombatTracker.EnergyAtTurnStart,
-                CombatTracker.EnergyUsed(e.GameState.Energy),
-                CombatTracker.CardsPlayed,
-                CombatTracker.BlockGained(e.GameState.Player.Block),
-                CombatTracker.DamageDealt,
-                CombatTracker.DamageTaken);
+            var dto = GameStateSerializer.Serialize(
+                runState,
+                eventType,
+                CombatTracker.CurrentCombatId ?? "",
+                RunTracker.CurrentRunId ?? "");
+            _ = StateHttpClient.PostStateAsync(dto);
         }
-        PostState("turn_end", e.GameState);
-    }
-
-    // ── Card handlers ─────────────────────────────────────────────────────────
-
-    private static void OnCardDrawn(CardDrawnEvent e)
-    {
-        PostState("card_drawn", e.GameState);
-    }
-
-    private static void OnCardPlayed(CardPlayedEvent e)
-    {
-        CombatTracker.RecordCardPlayed(e.Card.CardId);
-        if (e.Card.CardType.ToString() == "Attack")
-            CombatTracker.RecordDamageDealt(e.DamageDealt);
-        PostState("card_played", e.GameState);
-    }
-
-    // ── Enemy handlers ────────────────────────────────────────────────────────
-
-    private static void OnEnemyIntentSet(EnemyIntentSetEvent e)
-    {
-        PostState("enemy_intent", e.GameState);
-    }
-
-    // ── Shared helper ─────────────────────────────────────────────────────────
-
-    private static void PostState(string eventType, IGameState gs)
-    {
-        var dto = GameStateSerializer.Serialize(
-            gs,
-            eventType,
-            CombatTracker.CurrentCombatId ?? "",
-            RunTracker.CurrentRunId ?? "");
-        _ = StateHttpClient.PostStateAsync(dto);
+        catch (Exception ex)
+        {
+            Logger.Warning($"[{ModId}] State serialization error: {ex.Message}");
+        }
     }
 }

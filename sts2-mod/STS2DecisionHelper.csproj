@@ -1,15 +1,61 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>STS2DecisionHelper</AssemblyName>
     <RootNamespace>STS2DecisionHelper</RootNamespace>
+    <Optimize>true</Optimize>
+    <NoWarn>$(NoWarn);MSB3270;CS1591</NoWarn>
   </PropertyGroup>
 
-  <!--
-    ModSmith injects RitsuLib, BaseLib, and MegaDot (Godot) references at build time.
-    Run `modsmith build` from this directory — do not use `dotnet build` directly.
-    Ref: https://github.com/cpimhoff/Sts2-ModSmith/blob/main/docsite/docs/setup/guided.md
-  -->
+  <!-- Auto-detect STS2 via Steam registry on Windows -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <_SteamReg>$(registry:HKEY_CURRENT_USER\Software\Valve\Steam@SteamPath)\steamapps</_SteamReg>
+    <SteamLibraryPath Condition="Exists('$(_SteamReg)/common/Slay the Spire 2')">$(_SteamReg)</SteamLibraryPath>
+    <SteamLibraryPath Condition="'$(SteamLibraryPath)' == ''">C:/Program Files (x86)/Steam/steamapps</SteamLibraryPath>
+    <Sts2Path>$(SteamLibraryPath)/common/Slay the Spire 2</Sts2Path>
+    <Sts2DataDir>$(Sts2Path)/data_sts2_windows_x86_64</Sts2DataDir>
+    <ModsPath>$(Sts2Path)/mods</ModsPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Publicizes internal game types so mods can access them -->
+    <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- RitsuLib: lifecycle hooks, logging, patching framework -->
+    <PackageReference Include="STS2.RitsuLib" Version="0.3.0" />
+  </ItemGroup>
+
+  <!-- Game DLL references — resolved from the STS2 installation -->
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="sts2">
+      <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
+      <Private>false</Private>
+      <Publicize>true</Publicize>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Fail early with a readable message if the game isn't found -->
+  <Target Name="CheckSts2" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(Sts2DataDir)/sts2.dll')"
+           Text="STS2 data not found at '$(Sts2DataDir)'. If Steam is in a custom location, set SteamLibraryPath in Directory.Build.props." />
+  </Target>
+
+  <!-- After build: copy DLL + manifest into the game's mods folder -->
+  <Target Name="DeployToMods" AfterTargets="AfterBuild">
+    <MakeDir Directories="$(ModsPath)/STS2DecisionHelper" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsPath)/STS2DecisionHelper/" />
+    <Copy SourceFiles="mod.json"      DestinationFolder="$(ModsPath)/STS2DecisionHelper/" />
+    <Message Text="Deployed to $(ModsPath)/STS2DecisionHelper/" Importance="high" />
+  </Target>
+
 </Project>
