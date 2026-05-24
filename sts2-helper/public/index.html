@@ -38,6 +38,14 @@
     .logo span { color: var(--accent); }
     .topbar-meta { font-size: 11px; color: var(--muted); }
 
+    #demoBtn {
+      padding: 4px 14px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+      cursor: pointer; flex-shrink: 0;
+    }
+    #demoBtn:hover { border-color: var(--accent); color: var(--accent); }
+    #demoBtn.on { background: rgba(124,131,245,.2); border-color: var(--accent); color: var(--accent); }
+
     .conn {
       display: flex; align-items: center; gap: 6px;
       margin-left: auto;
@@ -228,7 +236,7 @@
       <div class="tab active" data-tab="live">Live</div>
       <div class="tab" data-tab="runs">History</div>
     </div>
-    <button class="btn" id="demoBtn" onclick="toggleDemo()" style="background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:5px 12px;font-size:11px;font-weight:700;border-radius:999px;cursor:pointer;">Demo</button>
+    <button id="demoBtn" onclick="toggleDemo()">Demo</button>
     <div class="conn" id="connBadge" onclick="reconnect()" title="Click to reconnect">
       <div class="conn-dot mid" id="connDot"></div>
       <span id="connTxt">Connecting</span>
@@ -712,20 +720,10 @@ let demoIdx = 0;
 function toggleDemo() {
   demoActive = !demoActive;
   const btn = document.getElementById('demoBtn');
-  if (demoActive) {
-    btn.style.background    = 'rgba(124,131,245,.2)';
-    btn.style.borderColor   = 'var(--accent)';
-    btn.style.color         = 'var(--accent)';
-    btn.textContent         = 'Demo ON';
-    demoIdx = 0;
-    runDemoTick();
-  } else {
-    btn.style.background  = 'var(--panel2)';
-    btn.style.borderColor = 'var(--border)';
-    btn.style.color       = 'var(--muted)';
-    btn.textContent       = 'Demo';
-    clearTimeout(demoTimer);
-  }
+  btn.classList.toggle('on', demoActive);
+  btn.textContent = demoActive ? 'Demo ON' : 'Demo';
+  if (demoActive) { demoIdx = 0; runDemoTick(); }
+  else clearTimeout(demoTimer);
 }
 
 function runDemoTick() {
