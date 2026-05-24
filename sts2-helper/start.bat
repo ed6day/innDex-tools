@@ -10,6 +10,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where git >nul 2>&1
+if not errorlevel 1 (
+    echo Pulling latest updates...
+    git -C "%~dp0.." pull origin claude/slay-spire-decision-helper-ifMXo 2>&1
+)
+
 if not exist node_modules (
     echo Installing dependencies...
     call npm install
