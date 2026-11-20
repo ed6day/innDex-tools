@@ -110,6 +110,24 @@ Verified in game (seed `2HZ7UB0D8KD2`): the Hefty Tablet choices, the first figh
 potion after Hefty Tablet, the Fuzzy Wurm Crawler fight's cards, and the first `?` event.
 Not yet verified: shop stock.
 
+## Events (lib/events.js)
+
+Each event gets its own RNG, `runSeed + playerSlot + XxHash64(event id)`, created when you
+enter it. Rolls happen in the order `CalculateVars`, then `GenerateInitialOptions`, then the
+option you pick. Gold amounts, relic rarities, the card Slippery Bridge offers, Tablet of
+Truth's upgrades and transform results are fixed by the seed. Potions and cards granted by
+events come from the player's Rewards stream.
+
+The next event comes from the act's list, skipping events already seen and those whose
+`IsAllowed` rule fails. Many rules are act-gated (Stone of All Time and Museum of Torture are
+act 2 only), and others depend on gold, HP or potions, so the order is judged on your current
+state.
+
+Ported: every event that can appear in act 1. Validated against run histories: on game
+builds 0.109 and later, every recorded This or That, Sunken Statue and Dense Vegetation gold
+amount matches when that gold option was taken. Builds before 0.109 seeded events
+differently.
+
 ## Why the save file matters
 
 `current_run.save` stores every stream's live state (`counter`, `s0..s3`) and the `?` odds.

@@ -266,6 +266,13 @@
     .step.uncertain { opacity: .7; border-style: dashed; }
     .flag { font-size: 10px; color: var(--warn); margin-top: 4px; }
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .evopt { border-left: 2px solid var(--border); padding: 2px 0 2px 8px; margin-top: 6px; font-size: 12px; }
+    .evopt b { font-size: 12px; }
+    .evopt .eff { color: var(--muted); font-size: 11px; }
+    details.ev summary { cursor: pointer; list-style: none; }
+    details.ev summary::-webkit-details-marker { display: none; }
+    details.ev summary::before { content: '\25B8 '; color: var(--muted); }
+    details.ev[open] summary::before { content: '\25BE '; }
     .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 10px; color: var(--muted); margin-top: 6px; }
 
     /* ── Empty state ── */
@@ -1054,6 +1061,26 @@ function shopBlock(sh) {
     <div class="sub" style="margin-top:4px;">Card removal ${sh.removalPrice}g</div></div></div>`;
 }
 
+// What each option of an event gives (lib/events.js forecastEvent).
+function eventForecastHtml(f) {
+  if (!f || !f.modelled) return '<div class="eff">Outcomes for this event aren\'t modelled yet.</div>';
+  return f.options.map(o => {
+    let h = `<div class="evopt"><b>${esc(o.name)}</b> <span class="eff">${o.effects.map(esc).join(' \u00B7 ')}</span>`;
+    if (o.relics) h += o.relics.filter(Boolean).map(r => `<div>&#9670; ${esc(pretty(r))}</div>`).join('');
+    if (o.potions) h += o.potions.map(potionLine).join('');
+    if (o.cardChoice) h += o.cardChoice.map(cardLine).join('');
+    if (o.transforms && o.transforms.length) {
+      const groups = {};
+      for (const t of o.transforms) (groups[t.to] = groups[t.to] || []).push(pretty(t.from));
+      h += Object.entries(groups).map(([to, from]) =>
+        `<div class="eff">${esc(from.length > 3 ? `Any of ${from.length} cards (${from.slice(0, 3).join(', ')}\u2026)` : from.join(', '))} \u2192 <span style="color:var(--text)">${esc(pretty(to))}</span></div>`).join('');
+    }
+    if (o.shiftsRewards) h += '<div class="flag">Uses the Rewards stream: shifts later card rewards.</div>';
+    if (o.shiftsRelicBag) h += '<div class="flag">Takes from your relic bag: shifts later elite relics.</div>';
+    return h + '</div>';
+  }).join('');
+}
+
 function renderRoute(res) {
   const panel = document.getElementById('routePanel');
   if (!res || !res.steps.length) {
@@ -1070,7 +1097,8 @@ function renderRoute(res) {
     if (st.rewards) body += rewardsBlock(st.rewards);
     if (st.relic) body += `<div>&#9670; ${esc(pretty(st.relic))}</div>`;
     if (st.shop) body += shopBlock(st.shop);
-    if (st.mayShiftRewards) body += '<div class="flag">This event can hand out rewards: forecasts after it depend on what you pick.</div>';
+    if (st.event) body += (st.eventNeeds ? `<div class="eff">Appears only with ${esc(st.eventNeeds)} (judged on your current state)</div>` : '') + eventForecastHtml(st.eventForecast);
+    if (st.mayShiftRewards) body += '<div class="flag">Forecasts after this event depend on the option you pick.</div>';
     if (st.uncertain) body += '<div class="flag">Assumes the earlier event didn\'t use the Rewards stream.</div>';
     const n = st.fightIndex ? `fight ${st.fightIndex}` : '';
     return `<div class="step${st.uncertain ? ' uncertain' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
@@ -1084,7 +1112,7 @@ function renderLookahead(L) {
       <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li>${esc(prettyEnc(e))}</li>`)}
         <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)">${esc(prettyEnc(e))}</li>`)}
         <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}</div></div>
-      <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}</li>`)}
+      <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li><details class="ev"><summary>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}${e.needs ? ` <span class="eff">(${esc(e.needs)})</span>` : ''}</summary>${eventForecastHtml(e.forecast)}</details></li>`)}
         <div class="note"><span style="color:var(--warn)">\u2022</span> can hand out rewards (shifts later card forecasts)</div></div>
     </div>
     <div class="sec-hdr">Card rewards if your next fights are all normal fights</div>

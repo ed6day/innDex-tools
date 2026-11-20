@@ -5,6 +5,7 @@
 const { RunRngSet, Rng, parseJsonBigSafe } = require('./rng');
 const { rollUnknownRoom, oddsFromSave } = require('./predict');
 const R = require('./rewards');
+const E = require('./events');
 
 const key = c => `${c.col},${c.row}`;
 
@@ -59,6 +60,8 @@ function stateFromSave(save) {
       eliteVisited: rooms.elite_encounters_visited || 0, eventsVisited: rooms.events_visited || 0,
     },
     seenEvents: new Set(save.events_seen || []),
+    // Eligibility uses the state as of now; gold/HP along the route aren't simulated.
+    evState: E.eventState(save),
     sharedBag: Object.fromEntries(Object.entries(shared).map(([k, v]) => [k, v.slice()])),
     lastWasShop: history.length > 0 && (history[history.length - 1].rooms || []).some(r => r.room_type === 'shop'),
     removalsUsed: save.players[0].extra_fields?.card_shop_removals_used ?? 0,
@@ -66,13 +69,13 @@ function stateFromSave(save) {
   };
 }
 
-// RoomSet.EnsureNextEventIsValid + NextEvent (only "already seen" is checked here;
-// events with their own IsAllowed conditions may be skipped by the game).
+// RoomSet.EnsureNextEventIsValid + NextEvent: skip events already seen or not allowed
+// (EventModel.IsAllowed, judged on your current gold/HP/potions).
 function pullEvent(st) {
   const list = st.rooms.events;
   for (let i = 0; i < list.length; i++) {
     const id = list[st.rooms.eventsVisited % list.length];
-    if (!st.seenEvents.has(id)) break;
+    if (!st.seenEvents.has(id) && E.isAllowed(id, st.evState)) break;
     st.rooms.eventsVisited++;
   }
   const id = list[st.rooms.eventsVisited % list.length];
@@ -115,6 +118,8 @@ function visit(st, node, nextTypes) {
     Object.assign(step, fight(st, roomType));
   } else if (roomType === 'Event' && node.type !== 'ancient') {
     step.event = pullEvent(st);
+    step.eventForecast = E.forecastEvent(step.event, st.ctx, st.evState);
+    step.eventNeeds = E.needs(step.event);
     if (REWARD_EVENTS.has(step.event.replace(/^EVENT\./, '')) && st.uncertainFrom == null) {
       st.uncertainFrom = step.node;
       step.mayShiftRewards = true;
@@ -126,6 +131,7 @@ function visit(st, node, nextTypes) {
     Object.assign(step, treasure(st));
   }
   step.uncertain = st.uncertainFrom != null && !step.mayShiftRewards;
+  st.evState.totalFloor++;
   st.lastWasShop = roomType === 'Shop';
   return step;
 }
@@ -160,6 +166,7 @@ function lookahead(save, count = 8) {
   const events = [];
   const probe = { ...st, rooms: { ...r }, seenEvents: new Set(st.seenEvents) };
   for (let i = 0; i < Math.min(count, r.events.length); i++) events.push(pullEvent(probe));
+  const forecasts = events.map(id => E.forecastEvent(id, st.ctx, st.evState));
   // If every upcoming fight were a normal fight: the n-th card reward.
   const ctx = R.cloneCtx(st.ctx);
   const fights = Array.from({ length: count }, () => R.predictCombatRewards(ctx, 'Monster'));
@@ -169,7 +176,9 @@ function lookahead(save, count = 8) {
     normals: take(r.normal, r.normalVisited, count),
     elites: take(r.elite, r.eliteVisited, Math.min(count, 4)),
     boss: r.boss,
-    events: events.map(id => ({ id, mayShiftRewards: REWARD_EVENTS.has(id.replace(/^EVENT\./, '')) })),
+    events: events.map((id, i) => ({
+      id, mayShiftRewards: REWARD_EVENTS.has(id.replace(/^EVENT\./, '')), needs: E.needs(id), forecast: forecasts[i],
+    })),
     normalFightRewards: fights,
     shops,
   };

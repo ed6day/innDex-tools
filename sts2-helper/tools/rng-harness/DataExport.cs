@@ -12,6 +12,8 @@ using MegaCrit.Sts2.Core.Unlocks;
 // odds rolls) can't, because the logger calls into native Godot.
 public static class DataExport
 {
+    static T Safe<T>(Func<T> f, T fallback) { try { return f(); } catch { return fallback; } }
+
     public static void Run()
     {
         TestMode.IsOn = true;
@@ -47,6 +49,8 @@ public static class DataExport
                 type = c.Type.ToString(),
                 mp = c.MultiplayerConstraint.ToString(),
                 upgradable = c.IsUpgradable,
+                removable = Safe(() => c.IsRemovable, true),
+                transformable = Safe(() => c.IsTransformable, true),
                 gates = gates.TryGetValue(c.Id.ToString(), out var g) ? g : null, // null = never unlocked here
             }).ToList();
         }
