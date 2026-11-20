@@ -1,212 +1,366 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// GameStateSerializer — maps STS2 RunState to our HTTP DTOs.
-//
-// HOW TO FILL THIS IN:
-//   1. Build once to let the DLL reference resolve
-//   2. Open the decompiled sts2.dll in ILSpy / dnSpy / Rider
-//   3. Browse to the RunState / AbstractCreature / AbstractCard types
-//   4. Replace every "TODO: ..." comment with the real property access
-//
-// The STS2 Modding MCP (https://github.com/elliotttate/sts2-modding-mcp)
-// lets you browse decompiled game classes with AI assistance if you want
-// a faster way to find the right property names.
-// ─────────────────────────────────────────────────────────────────────────────
-
 using STS2DecisionHelper.Models;
 
 namespace STS2DecisionHelper;
 
 public static class GameStateSerializer
 {
-    public static GameStateDto Serialize(object runState, string eventType, string combatId, string runId)
+    // ── Entry points ──────────────────────────────────────────────────────────
+
+    public static GameStateDto Serialize(object runStateObj, string eventType, string combatId, string runId)
     {
+        var player = GetPlayerFromRunState(runStateObj);
+        return Build(eventType, combatId, runId,
+            player,
+            GetFloor(runStateObj),
+            GetTurnNumberFromRunState(runStateObj));
+    }
+
+    public static GameStateDto SerializeCombat(object cs, string eventType, string combatId, string runId)
+    {
+        object? player = null;
+        try { dynamic dc = cs; player = dc.LocalPlayer; } catch { }
+        return Build(eventType, combatId, runId,
+            player,
+            RunTracker.CurrentFloor,
+            GetTurnNumber(cs));
+    }
+
+    private static GameStateDto Build(
+        string eventType, string combatId, string runId,
+        object? player, int floorNumber, int turnNumber)
+    {
+        int playerHp = 0, playerMaxHp = 0, block = 0;
+        var hand        = new List<CardDto>();
+        var drawPile    = new List<CardDto>();
+        var discardPile = new List<CardDto>();
+        var exhaustPile = new List<CardDto>();
+        var relics      = new List<string>();
+        var powers      = new Dictionary<string, int>();
+
+        if (player != null)
+        {
+            dynamic dp = player;
+            try { playerHp   = (int)dp.CurrentHp; } catch { }
+            try { playerMaxHp = (int)dp.MaxHp; }    catch { }
+            try { block       = (int)dp.Block; }     catch { }
+            try { hand        = GetCardList(dp.Hand); }        catch { }
+            try { drawPile    = GetCardList(dp.DrawPile); }    catch { }
+            try { discardPile = GetCardList(dp.DiscardPile); } catch { }
+            try { exhaustPile = GetCardList(dp.ExhaustPile); } catch { }
+            relics = GetRelicNames(player).ToList();
+            powers = GetPlayerPowers(player);
+        }
+
         return new GameStateDto
         {
             EventType   = eventType,
             Timestamp   = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             CombatId    = combatId,
             RunId       = runId,
-            TurnNumber  = GetTurnNumber(runState),
-            Energy      = GetEnergy(runState),
-            MaxEnergy   = GetMaxEnergy(runState),
-            PlayerHp    = GetPlayerHp(runState),
-            PlayerMaxHp = GetPlayerMaxHp(runState),
-            Block       = GetBlock(runState),
-            FloorNumber = GetFloor(runState),
-            Character   = GetCharacterName(runState),
-            Hand        = GetHand(runState),
-            DrawPile    = GetDrawPile(runState),
-            DiscardPile = GetDiscardPile(runState),
-            ExhaustPile = GetExhaustPile(runState),
-            Enemies     = GetEnemies(runState),
-            Relics      = GetRelicNames(runState).ToList(),
-            Powers      = GetPlayerPowers(runState),
+            TurnNumber  = turnNumber,
+            Energy      = GetPlayerEnergy(player),
+            MaxEnergy   = GetPlayerMaxEnergy(player),
+            PlayerHp    = playerHp,
+            PlayerMaxHp = playerMaxHp,
+            Block       = block,
+            FloorNumber = floorNumber,
+            Character   = RunTracker.Character,
+            Hand        = hand,
+            DrawPile    = drawPile,
+            DiscardPile = discardPile,
+            ExhaustPile = exhaustPile,
+            Enemies     = new(),
+            Relics      = relics,
+            Powers      = powers,
         };
     }
 
     // ── Player state ──────────────────────────────────────────────────────────
 
-    public static int GetPlayerHp(object runState)
+    private static object? GetPlayerFromRunState(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Player.CurrentHp;
-        return 0;
+        try { dynamic rs = runStateObj; return rs.LocalPlayer; } catch { return null; }
     }
 
-    public static int GetPlayerMaxHp(object runState)
+    public static int GetPlayerHp(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Player.MaxHp;
-        return 0;
+        var p = GetPlayerFromRunState(runStateObj);
+        if (p == null) return 0;
+        try { return (int)((dynamic)p).CurrentHp; } catch { return 0; }
     }
 
-    public static int GetBlock(object runState)
+    public static int GetPlayerHpFromCombat(object cs)
     {
-        // TODO: return ((RunState)runState).Player.Block;
-        return 0;
+        try { dynamic dc = cs; return (int)dc.LocalPlayer.CurrentHp; } catch { return 0; }
     }
 
-    public static int GetEnergy(object runState)
+    public static int GetBlockFromCombat(object cs)
     {
-        // TODO: return ((RunState)runState).Player.Energy.Energy;
-        return 0;
+        try { dynamic dc = cs; return (int)dc.LocalPlayer.Block; } catch { return 0; }
     }
 
-    public static int GetMaxEnergy(object runState)
+    private static int GetPlayerEnergy(object? player)
     {
-        // TODO: return ((RunState)runState).Player.Energy.MaxEnergy;
-        return 0;
+        if (player == null) return 0;
+        try { dynamic e = ((dynamic)player).Energy; return (int)e.Energy; } catch { return 0; }
     }
 
-    public static int GetTurnNumber(object runState)
+    private static int GetPlayerMaxEnergy(object? player)
     {
-        // TODO: return ((RunState)runState).CombatState?.TurnNumber ?? 0;
-        return 0;
+        if (player == null) return 0;
+        try { dynamic e = ((dynamic)player).Energy; return (int)e.MaxEnergy; } catch { }
+        try { return (int)((dynamic)player).MaxEnergy; } catch { return 0; }
     }
 
-    public static string GetCharacterName(object runState)
+    public static int GetEnergy(object cs)
     {
-        // TODO: return ((RunState)runState).Player.GetType().Name;
-        return "";
+        try { dynamic dc = cs; return GetPlayerEnergy(dc.LocalPlayer); } catch { return 0; }
     }
 
-    public static int GetFloor(object runState)
+    public static int GetFloor(object runStateObj)
     {
-        // TODO: return ((RunState)runState).FloorNum;
-        return 0;
+        try { dynamic rs = runStateObj; return (int)rs.FloorNum; } catch { return 0; }
     }
 
-    public static int GetScore(object runState)
+    public static int GetScore(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Score;
-        return 0;
+        try { dynamic rs = runStateObj; return (int)rs.Score; } catch { return 0; }
+    }
+
+    public static string GetCharacterName(object runStateObj)
+    {
+        try { dynamic rs = runStateObj; return (string)(rs.LocalPlayer?.CharacterId ?? ""); }
+        catch { return ""; }
+    }
+
+    private static int GetTurnNumberFromRunState(object runStateObj)
+    {
+        try { dynamic rs = runStateObj; return GetTurnNumber(rs.CombatState); } catch { return 0; }
+    }
+
+    private static int GetTurnNumber(object? cs)
+    {
+        try { dynamic dc = cs; return (int)dc.TurnsTaken; } catch { return 0; }
     }
 
     // ── Card piles ────────────────────────────────────────────────────────────
 
-    public static List<CardDto> GetHand(object runState)
+    private static List<CardDto> GetCardList(object? pile)
     {
-        // TODO: return ((RunState)runState).Player.Hand.Group.Select(MapCard).ToList();
-        return new List<CardDto>();
+        if (pile == null) return new();
+        try
+        {
+            dynamic p = pile;
+            var result = new List<CardDto>();
+            foreach (var card in p.Cards)
+                result.Add(MapCard(card));
+            return result;
+        }
+        catch { return new(); }
     }
 
-    public static List<CardDto> GetDrawPile(object runState)
+    public static List<CardDto> GetHand(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Player.DrawPile.Group.Select(MapCard).ToList();
-        return new List<CardDto>();
+        var p = GetPlayerFromRunState(runStateObj);
+        if (p == null) return new();
+        try { dynamic dp = p; return GetCardList(dp.Hand); } catch { return new(); }
     }
 
-    public static List<CardDto> GetDiscardPile(object runState)
+    public static List<CardDto> GetDrawPile(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Player.DiscardPile.Group.Select(MapCard).ToList();
-        return new List<CardDto>();
+        var p = GetPlayerFromRunState(runStateObj);
+        if (p == null) return new();
+        try { dynamic dp = p; return GetCardList(dp.DrawPile); } catch { return new(); }
     }
 
-    public static List<CardDto> GetExhaustPile(object runState)
+    public static List<CardDto> GetDiscardPile(object runStateObj)
     {
-        // TODO: return ((RunState)runState).Player.ExhaustPile.Group.Select(MapCard).ToList();
-        return new List<CardDto>();
+        var p = GetPlayerFromRunState(runStateObj);
+        if (p == null) return new();
+        try { dynamic dp = p; return GetCardList(dp.DiscardPile); } catch { return new(); }
     }
 
-    public static List<CardDto> GetFullDeck(object runState)
+    public static List<CardDto> GetExhaustPile(object runStateObj)
+    {
+        var p = GetPlayerFromRunState(runStateObj);
+        if (p == null) return new();
+        try { dynamic dp = p; return GetCardList(dp.ExhaustPile); } catch { return new(); }
+    }
+
+    public static List<CardDto> GetFullDeck(object runStateObj)
     {
         var all = new List<CardDto>();
-        all.AddRange(GetHand(runState));
-        all.AddRange(GetDrawPile(runState));
-        all.AddRange(GetDiscardPile(runState));
+        all.AddRange(GetHand(runStateObj));
+        all.AddRange(GetDrawPile(runStateObj));
+        all.AddRange(GetDiscardPile(runStateObj));
         return all;
     }
 
-    public static CardDto MapCardPublic(object card) => MapCard(card);
-
-    private static CardDto MapCard(object card)
+    private static CardDto MapCard(object? card)
     {
-        // TODO: cast to AbstractCard (or whatever the base card type is) and read properties
-        // Example:
-        //   var c = (AbstractCard)card;
-        //   return new CardDto { Id = c.CardID, Name = c.Name, Type = c.Type.ToString(),
-        //                        Cost = c.Cost, Damage = c.BaseDamage, Block = c.BaseBlock,
-        //                        Upgraded = c.Upgraded };
-        return new CardDto();
+        if (card == null) return new CardDto();
+        try
+        {
+            dynamic c = card;
+            int cost;
+            try { cost = (bool)c.CostsX ? -1 : (int)c.CanonicalEnergyCost; }
+            catch { try { cost = (int)c.Cost; } catch { cost = 0; } }
+
+            string type;
+            try { type = c.Type.ToString(); } catch { type = ""; }
+
+            int dmg;
+            try { dmg = (int)c.BaseDamage; } catch { dmg = 0; }
+
+            int blk;
+            try { blk = (int)c.Block; } catch { blk = 0; }
+
+            bool upgraded;
+            try { upgraded = (bool)c.Upgraded; } catch { try { upgraded = (bool)c.IsUpgraded; } catch { upgraded = false; } }
+
+            string id;
+            try { id = c.Id.ToString(); } catch { id = ""; }
+
+            string name;
+            try { name = (string)c.Name; } catch { name = ""; }
+
+            return new CardDto { Id = id, Name = name, Type = type, Cost = cost, Damage = dmg, Block = blk, Upgraded = upgraded };
+        }
+        catch { return new CardDto(); }
+    }
+
+    public static string GetCardId(object cardPlay)
+    {
+        try { dynamic cp = cardPlay; return cp.Card.Id.ToString(); }
+        catch { return ""; }
     }
 
     // ── Enemies ───────────────────────────────────────────────────────────────
 
-    public static List<EnemyDto> GetEnemies(object runState)
+    public static List<EnemyDto> GetEnemies(object runStateObj)
     {
-        // TODO: return ((RunState)runState).CombatState?.Monsters.Monsters.Select(MapEnemy).ToList()
-        //            ?? new List<EnemyDto>();
-        return new List<EnemyDto>();
+        try { dynamic rs = runStateObj; return MapEnemies(rs.CombatState?.Monsters?.Monsters); }
+        catch { return new(); }
     }
 
-    public static IEnumerable<string> GetEnemyNames(object runState)
+    public static List<EnemyDto> GetEnemiesFromCombat(object cs)
     {
-        return GetEnemies(runState).Select(e => e.Name);
+        try { dynamic dc = cs; return MapEnemies(dc.Monsters?.Monsters); } catch { return new(); }
     }
 
-    private static EnemyDto MapEnemy(object enemy)
+    private static List<EnemyDto> MapEnemies(object? monsters)
     {
-        // TODO: cast to AbstractMonster and read properties
-        // Example:
-        //   var e = (AbstractMonster)enemy;
-        //   return new EnemyDto { Id = e.Id, Name = e.Name,
-        //                         CurrentHp = e.CurrentHp, MaxHp = e.MaxHp,
-        //                         IntentType = e.Intent.ToString(), IntentValue = e.IntentDmg };
-        return new EnemyDto();
+        if (monsters == null) return new();
+        try
+        {
+            var result = new List<EnemyDto>();
+            foreach (var m in (System.Collections.IEnumerable)monsters)
+                result.Add(MapEnemy(m));
+            return result;
+        }
+        catch { return new(); }
     }
+
+    private static EnemyDto MapEnemy(object? monster)
+    {
+        if (monster == null) return new EnemyDto();
+        try
+        {
+            dynamic e = monster;
+
+            string id;   try { id   = e.Id.ToString(); }  catch { id   = ""; }
+            string name; try { name = (string)e.Name; }   catch { name = ""; }
+            int hp;      try { hp   = (int)e.CurrentHp; } catch { hp   = 0; }
+            int maxHp;   try { maxHp = (int)e.MaxHp; }    catch { maxHp = 0; }
+            int block;   try { block = (int)e.Block; }     catch { block = 0; }
+
+            string intentType = "Unknown";
+            int    intentVal  = 0;
+            try
+            {
+                var intent = ((System.Collections.IEnumerable)e.Intents).Cast<object>().FirstOrDefault();
+                if (intent != null)
+                {
+                    dynamic di = intent;
+                    try { intentType = di.IntentType.ToString(); } catch { }
+                    try { intentVal  = (int)di.Damage; } catch { try { intentVal = (int)di.BaseDamage; } catch { } }
+                }
+            }
+            catch { }
+
+            var powers = new Dictionary<string, int>();
+            try
+            {
+                foreach (var p in (System.Collections.IEnumerable)e.Powers)
+                {
+                    try { dynamic dp = p; powers[dp.Name.ToString()] = (int)dp.Amount; } catch { }
+                }
+            }
+            catch { }
+
+            return new EnemyDto
+            {
+                Id = id, Name = name, CurrentHp = hp, MaxHp = maxHp,
+                IntentType = intentType, IntentValue = intentVal, Powers = powers,
+            };
+        }
+        catch { return new EnemyDto(); }
+    }
+
+    public static IEnumerable<string> GetEnemyNames(object runStateObj)
+        => GetEnemies(runStateObj).Select(e => e.Name);
 
     // ── Relics & powers ───────────────────────────────────────────────────────
 
-    public static IEnumerable<string> GetRelicNames(object runState)
+    public static IEnumerable<string> GetRelicNames(object player)
     {
-        // TODO: return ((RunState)runState).Player.Relics.Select(r => r.Name);
-        return Enumerable.Empty<string>();
+        try
+        {
+            var result = new List<string>();
+            dynamic dp = player;
+            foreach (var r in (System.Collections.IEnumerable)dp.Relics)
+            {
+                try { dynamic dr = r; result.Add(dr.Name.ToString()); } catch { }
+            }
+            return result;
+        }
+        catch { return Enumerable.Empty<string>(); }
     }
 
-    public static Dictionary<string, int> GetPlayerPowers(object runState)
+    public static Dictionary<string, int> GetPlayerPowers(object player)
     {
-        // TODO: return ((RunState)runState).Player.Powers.ToDictionary(p => p.Name, p => p.Amount);
-        return new Dictionary<string, int>();
+        try
+        {
+            var result = new Dictionary<string, int>();
+            dynamic dp = player;
+            foreach (var p in (System.Collections.IEnumerable)dp.Powers)
+            {
+                try { dynamic dpow = p; result[dpow.Name.ToString()] = (int)dpow.Amount; } catch { }
+            }
+            return result;
+        }
+        catch { return new(); }
     }
 
     // ── Run-end helpers ───────────────────────────────────────────────────────
 
-    public static string GetRunOutcome(RunEndedEvent evt)
+    public static int GetScoreFromRun(object serializableRun)
     {
-        // TODO: inspect evt to determine win/death/abandoned
-        // Example: return evt.Victory ? "win" : "death";
-        return "unknown";
+        try { dynamic r = serializableRun; return (int)r.Score; } catch { return 0; }
     }
 
-    public static string? GetCauseOfDeath(RunEndedEvent evt)
+    public static IEnumerable<string> GetRelicNamesFromRun(object serializableRun)
     {
-        // TODO: return evt.KilledBy?.Name;
-        return null;
-    }
-
-    // ── Card event helpers ────────────────────────────────────────────────────
-
-    public static string GetCardId(CardPlayedEvent evt)
-    {
-        // TODO: return evt.Card.CardID;
-        return "";
+        try
+        {
+            dynamic r = serializableRun;
+            var result = new List<string>();
+            foreach (var relic in (System.Collections.IEnumerable)r.Relics)
+            {
+                try { dynamic dr = relic; result.Add(dr.Name.ToString()); } catch { }
+            }
+            return result;
+        }
+        catch { return Enumerable.Empty<string>(); }
     }
 }

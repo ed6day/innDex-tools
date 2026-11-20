@@ -1,6 +1,8 @@
 using System.Reflection;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
+using MegaCrit.Sts2.Core.Runs;
 using STS2RitsuLib;
 using STS2RitsuLib.Interop;
 
@@ -48,21 +50,21 @@ public static class ModMain
         var runId = $"run-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
         RunTracker.StartRun(runId, evt.RunState);
         _ = StateHttpClient.PostRunStartAsync(runId, RunTracker.Character, RunTracker.AscensionLevel);
-        PostState("run_start", evt.RunState);
+        PostRunState("run_start", evt.RunState);
     }
 
     private static void OnRunEnded(RunEndedEvent evt)
     {
         if (RunTracker.CurrentRunId is null) return;
+        var outcome = evt.IsVictory ? "win" : evt.IsAbandoned ? "abandoned" : "death";
         _ = StateHttpClient.PostRunEndAsync(
             RunTracker.CurrentRunId,
-            GameStateSerializer.GetRunOutcome(evt),
-            GameStateSerializer.GetScore(evt.RunState),
+            outcome,
+            GameStateSerializer.GetScoreFromRun(evt.Run),
             RunTracker.CurrentFloor,
-            GameStateSerializer.GetCauseOfDeath(evt),
-            GameStateSerializer.GetRelicNames(evt.RunState));
+            null,
+            GameStateSerializer.GetRelicNamesFromRun(evt.Run));
         RunTracker.EndRun();
-        PostState("run_end", evt.RunState);
     }
 
     private static void OnRoomEntered(RoomEnteredEvent evt)
@@ -76,7 +78,7 @@ public static class ModMain
                 "floor_entry",
                 GameStateSerializer.GetFullDeck(evt.RunState));
         }
-        PostState("room_entered", evt.RunState);
+        PostRunState("room_entered", evt.RunState);
     }
 
     // ── Combat handlers ────────────────────────────────────────────────────────
@@ -90,8 +92,8 @@ public static class ModMain
             RunTracker.Character,
             RunTracker.CurrentFloor,
             GameStateSerializer.GetEnemyNames(evt.RunState),
-            CombatTracker.StartHp);
-        PostState("combat_start", evt.RunState);
+            CombatTracker.HpAtTurnStart);
+        PostRunState("combat_start", evt.RunState);
     }
 
     private static void OnCombatEnded(CombatEndedEvent evt)
@@ -102,7 +104,7 @@ public static class ModMain
             GameStateSerializer.GetPlayerHp(evt.RunState),
             "lose");
         CombatTracker.EndCombat();
-        PostState("combat_end", evt.RunState);
+        PostRunState("combat_end", evt.RunState);
     }
 
     private static void OnCombatVictory(CombatVictoryEvent evt)
@@ -113,42 +115,52 @@ public static class ModMain
             GameStateSerializer.GetPlayerHp(evt.RunState),
             "win");
         CombatTracker.EndCombat();
-        PostState("combat_victory", evt.RunState);
+        PostRunState("combat_victory", evt.RunState);
     }
 
     // ── Turn handlers ──────────────────────────────────────────────────────────
 
     private static void OnTurnStarting(SideTurnStartingEvent evt)
     {
+        if (evt.Side != CombatSide.Player) return;
+        // Use dynamic to bypass ICombatState reference missing from sts2 v0.103.2
+        dynamic de = evt;
+        object cs = de.CombatState;
         CombatTracker.StartTurn(
-            GameStateSerializer.GetEnergy(evt.RunState),
-            GameStateSerializer.GetPlayerHp(evt.RunState),
-            GameStateSerializer.GetBlock(evt.RunState));
-        PostState("turn_start", evt.RunState);
+            GameStateSerializer.GetEnergy(cs),
+            GameStateSerializer.GetPlayerHpFromCombat(cs),
+            GameStateSerializer.GetBlockFromCombat(cs));
+        PostCombatState("turn_start", cs);
     }
 
     private static void OnTurnStarted(SideTurnStartedEvent evt)
     {
-        // Hand is fully drawn at this point — send a second update
-        PostState("turn_ready", evt.RunState);
+        if (evt.Side != CombatSide.Player) return;
+        dynamic de = evt;
+        object cs = de.CombatState;
+        PostCombatState("turn_ready", cs);
     }
 
     // ── Card handlers ──────────────────────────────────────────────────────────
 
     private static void OnCardPlayed(CardPlayedEvent evt)
     {
-        CombatTracker.RecordCardPlayed(GameStateSerializer.GetCardId(evt));
-        PostState("card_played", evt.RunState);
+        CombatTracker.RecordCardPlayed(GameStateSerializer.GetCardId(evt.CardPlay));
+        dynamic de = evt;
+        object cs = de.CombatState;
+        PostCombatState("card_played", cs);
     }
 
     private static void OnCardDrawn(CardDrawnEvent evt)
     {
-        PostState("card_drawn", evt.RunState);
+        dynamic de = evt;
+        object cs = de.CombatState;
+        PostCombatState("card_drawn", cs);
     }
 
-    // ── Shared helper ──────────────────────────────────────────────────────────
+    // ── Shared helpers ─────────────────────────────────────────────────────────
 
-    private static void PostState(string eventType, object runState)
+    private static void PostRunState(string eventType, object runState)
     {
         try
         {
@@ -161,7 +173,24 @@ public static class ModMain
         }
         catch (Exception ex)
         {
-            Logger.Warning($"[{ModId}] State serialization error: {ex.Message}");
+            Logger.Warn($"[{ModId}] State serialization error: {ex.Message}");
+        }
+    }
+
+    private static void PostCombatState(string eventType, object combatState)
+    {
+        try
+        {
+            var dto = GameStateSerializer.SerializeCombat(
+                combatState,
+                eventType,
+                CombatTracker.CurrentCombatId ?? "",
+                RunTracker.CurrentRunId ?? "");
+            _ = StateHttpClient.PostStateAsync(dto);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[{ModId}] Combat state serialization error: {ex.Message}");
         }
     }
 }

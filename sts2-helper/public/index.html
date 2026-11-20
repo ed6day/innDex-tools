@@ -38,14 +38,6 @@
     .logo span { color: var(--accent); }
     .topbar-meta { font-size: 11px; color: var(--muted); }
 
-    #demoBtn {
-      padding: 4px 14px; border-radius: 999px; font-size: 11px; font-weight: 700;
-      background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
-      cursor: pointer; flex-shrink: 0;
-    }
-    #demoBtn:hover { border-color: var(--accent); color: var(--accent); }
-    #demoBtn.on { background: rgba(124,131,245,.2); border-color: var(--accent); color: var(--accent); }
-
     .conn {
       display: flex; align-items: center; gap: 6px;
       margin-left: auto;
@@ -217,6 +209,30 @@
     }
     .pag-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+    /* ── Seed pane ── */
+    #seedPane > div { flex: 1; padding: 14px; overflow-y: auto; display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-content: start; }
+    #seedPane .wide { grid-column: 1 / -1; }
+    .seed-pill {
+      padding: 3px 10px; border-radius: 999px; font: 700 11px ui-monospace, Consolas, monospace;
+      background: var(--panel2); border: 1px solid var(--border); color: var(--warn);
+      cursor: pointer; letter-spacing: .5px;
+    }
+    .seed-pill:empty { display: none; }
+    .seed-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+    .seed-head input { font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; text-transform: uppercase; width: 180px; }
+    .seed-meta { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+    .btn-g { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+    .note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .room { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+    .room.Event    { background: rgba(124,131,245,.15); color: var(--accent); }
+    .room.Monster  { background: rgba(248,113,113,.15); color: var(--bad); }
+    .room.Treasure { background: rgba(251,191,36,.15); color: var(--warn); }
+    .room.Shop     { background: rgba(74,222,128,.15); color: var(--good); }
+    .draw-order { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .draw-order .card-chip { font-size: 11px; padding: 3px 7px; }
+
     /* ── Empty state ── */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 6px; color: var(--muted); }
     .empty .big { font-size: 32px; }
@@ -235,8 +251,9 @@
     <div class="tabs">
       <div class="tab active" data-tab="live">Live</div>
       <div class="tab" data-tab="runs">History</div>
+      <div class="tab" data-tab="seed">Seed</div>
     </div>
-    <button id="demoBtn" onclick="toggleDemo()">Demo</button>
+    <div class="seed-pill" id="seedPill" title="Run seed — click for RNG forecast" onclick="openSeedTab()"></div>
     <div class="conn" id="connBadge" onclick="reconnect()" title="Click to reconnect">
       <div class="conn-dot mid" id="connDot"></div>
       <span id="connTxt">Connecting</span>
@@ -272,7 +289,7 @@
         </div>
 
         <div class="panel" style="grid-column:1;grid-row:2;">
-          <div class="ph">Draw Probability <span class="ph-right muted" id="drawCount" style="color:var(--muted);"></span></div>
+          <div class="ph"><span id="drawPanelTitle">Draw Probability</span> <span class="ph-right muted" id="drawCount" style="color:var(--muted);"></span></div>
           <div class="pb" id="drawPanel">
             <div class="empty"><div>Waiting for draw pile</div></div>
           </div>
@@ -325,12 +342,48 @@
                   <th>Score</th><th>Outcome</th><th>Date</th>
                 </tr></thead>
                 <tbody id="runsBody">
-                  <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">Search to load runs</td></tr>
+                  <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">Loading...</td></tr>
                 </tbody>
               </table>
             </div>
             <div id="runsPag" class="pag" style="margin-top:10px;"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Seed tab -->
+    <div class="pane" id="seedPane">
+      <div>
+        <div class="panel wide">
+          <div class="ph">Seed &amp; RNG <span class="ph-right" id="seedSource" style="color:var(--muted);"></span></div>
+          <div class="pb">
+            <div class="seed-head">
+              <div class="ff">
+                <label>Seed (top-right of the game screen)</label>
+                <input id="seedInput" maxlength="32" placeholder="e.g. 0K789M7XN0"
+                       onkeydown="if(event.key==='Enter')analyzeSeed()" />
+              </div>
+              <button class="btn btn-p" onclick="analyzeSeed()">Analyze seed</button>
+              <button class="btn btn-g" onclick="loadCurrentRng()">Use current run save</button>
+            </div>
+            <div class="seed-meta" id="seedMeta"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="ph">Next combat &mdash; opening hand <span class="ph-right" id="openingMeta" style="color:var(--muted);"></span></div>
+          <div class="pb" id="openingPanel"><div class="empty" style="height:80px;"><div>Needs a run in progress</div></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="ph">Upcoming &ldquo;?&rdquo; rooms</div>
+          <div class="pb" id="unknownPanel"><div class="empty" style="height:80px;"><div>Enter a seed</div></div></div>
+        </div>
+
+        <div class="panel wide">
+          <div class="ph">RNG streams <span class="ph-right" style="color:var(--muted);">xoshiro256** &middot; one independent stream per purpose</span></div>
+          <div class="pb runs-wrap" id="streamsPanel"><div class="empty" style="height:80px;"><div>Enter a seed</div></div></div>
         </div>
       </div>
     </div>
@@ -370,6 +423,9 @@ function setConn(state, label) {
 
 connect();
 
+// Seed live view from last persisted state in case server restarted mid-run
+fetch('/api/state/latest').then(r => r.ok ? r.json() : null).then(p => { if (p) renderLive(p); }).catch(() => {});
+
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -377,24 +433,34 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   t.classList.add('active');
   document.getElementById(t.dataset.tab + 'Pane').classList.add('active');
   if (t.dataset.tab === 'runs') loadRuns(1);
+  if (t.dataset.tab === 'seed' && !seedLoaded) loadCurrentRng();
 }));
+
+loadRuns(1);
 
 // ── Live rendering ─────────────────────────────────────────────────────────────
 
 function renderLive(payload) {
   const s = payload.state;
   if (!s) return;
+  const isSave = s.source === 'save_file';
+  const combatLabel = isSave ? 'Between combats' : `T${s.turnNumber ?? 0}`;
+  if (s.seed !== undefined) document.getElementById('seedPill').textContent = s.seed || '';
+  if (isSave && seedMode === 'save' && document.getElementById('seedPane').classList.contains('active')) loadCurrentRng();
   document.getElementById('floorMeta').textContent =
-    s.character ? `${s.character} | Floor ${s.floorNumber ?? '?'} | T${s.turnNumber ?? 0}` : '';
-  renderHand(s);
-  renderEnemies(s);
-  renderDraw(s);
-  renderStatus(s);
+    s.character ? `${s.character} | Floor ${s.floorNumber ?? '?'} | ${combatLabel}` : '';
+  document.getElementById('drawPanelTitle').textContent = isSave ? 'Deck' : 'Draw Probability';
+  document.getElementById('drawCount').textContent =
+    isSave ? `${(s.drawPile||[]).length} cards` : `${(s.drawPile||[]).length} in pile`;
+  renderHand(s, isSave);
+  renderEnemies(s, isSave);
+  renderDraw(s, isSave);
+  renderStatus(s, isSave);
 }
 
 // ── Hand ───────────────────────────────────────────────────────────────────────
 
-function renderHand(s) {
+function renderHand(s, isSave) {
   const hand = s.hand || [];
   const str  = (s.powers && s.powers['Strength'])  || 0;
   const dex  = (s.powers && s.powers['Dexterity'])  || 0;
@@ -407,7 +473,7 @@ function renderHand(s) {
   grid.innerHTML = '';
 
   if (!hand.length) {
-    grid.innerHTML = '<div class="empty" style="height:60px;"><div>No cards in hand</div></div>';
+    grid.innerHTML = `<div class="empty" style="height:60px;"><div>${isSave ? 'Between combats — deck shown below' : 'No cards in hand'}</div></div>`;
   } else {
     hand.forEach(c => {
       const playable = c.cost !== -1 && c.cost <= energy;
@@ -455,7 +521,7 @@ function row(label, val, cls) {
 
 // ── Enemies ────────────────────────────────────────────────────────────────────
 
-function renderEnemies(s) {
+function renderEnemies(s, isSave) {
   const enemies = s.enemies || [];
   const vuln    = (s.powers && s.powers['Vulnerable']) || 0;
   const panel   = document.getElementById('enemyPanel');
@@ -510,12 +576,11 @@ function probGte1(N, K, n) {
   return 1 - comb(N - K, n) / comb(N, n);
 }
 
-function renderDraw(s) {
+function renderDraw(s, isSave) {
   const pile = s.drawPile || [];
-  document.getElementById('drawCount').textContent = pile.length + ' in pile';
   const panel = document.getElementById('drawPanel');
   if (!pile.length) {
-    panel.innerHTML = '<div class="empty"><div>Draw pile empty</div></div>';
+    panel.innerHTML = `<div class="empty"><div>${isSave ? 'No active run' : 'Draw pile empty'}</div></div>`;
     return;
   }
   const counts = {};
@@ -543,7 +608,7 @@ const RELIC_TRIGGERS = {
   'Art of War':     s => !(s.hand||[]).some(c => c.type==='Attack'),
 };
 
-function renderStatus(s) {
+function renderStatus(s, isSave) {
   const panel  = document.getElementById('statusPanel');
   const powers = s.powers || {};
   const relics = s.relics  || [];
@@ -553,7 +618,7 @@ function renderStatus(s) {
 
   let html =
     row('Player HP', `${s.playerHp ?? '?'} / ${s.playerMaxHp ?? '?'}`, hpCls) +
-    row('Block',     s.block ?? 0, 'd') +
+    (isSave ? row('Gold', s.gold ?? 0, 'w') : row('Block', s.block ?? 0, 'd')) +
     row('Energy',    `${s.energy ?? '?'} / ${s.maxEnergy ?? '?'}`);
 
   const powEntries = Object.entries(powers);
@@ -590,7 +655,7 @@ function logEvent(type, ts) {
 
 // ── Run history ────────────────────────────────────────────────────────────────
 
-let curPage = 1;
+var curPage = 1; // var: loadRuns(1) is called earlier in the script
 
 async function loadRuns(page) {
   curPage = page;
@@ -637,102 +702,106 @@ async function loadRuns(page) {
   }
 }
 
-// ── Demo mode ─────────────────────────────────────────────────────────────────
+// ── Seed & RNG ─────────────────────────────────────────────────────────────────
 
-let demoActive = false;
-let demoTimer  = null;
+let seedLoaded = false;
+let seedMode = 'save'; // 'save' = live from current_run.save, 'seed' = typed seed at run start
 
-const DEMO_STATES = [
-  {
-    eventType: 'turn_start',
-    state: {
-      character: 'Ironclad', floorNumber: 7, turnNumber: 3,
-      playerHp: 45, playerMaxHp: 80, block: 5, energy: 3, maxEnergy: 3,
-      powers: { Strength: 2, Vulnerable: 2 },
-      relics: ['Burning Blood', 'Pen Nib', 'Bag of Marbles'],
-      hand: [
-        { id:'strike1', name:'Strike',         type:'Attack', cost:1, damage:6,  block:0, upgraded:false },
-        { id:'strike2', name:'Strike+',        type:'Attack', cost:1, damage:9,  block:0, upgraded:true  },
-        { id:'bash',    name:'Bash',           type:'Attack', cost:2, damage:8,  block:0, upgraded:false },
-        { id:'defend',  name:'Defend',         type:'Skill',  cost:1, damage:0,  block:5, upgraded:false },
-        { id:'shrug',   name:'Shrug It Off',   type:'Skill',  cost:1, damage:0,  block:8, upgraded:false },
-      ],
-      drawPile: [
-        { id:'strike3', name:'Strike',         type:'Attack', cost:1, damage:6,  block:0, upgraded:false },
-        { id:'strike4', name:'Strike',         type:'Attack', cost:1, damage:6,  block:0, upgraded:false },
-        { id:'defend2', name:'Defend',         type:'Skill',  cost:1, damage:0,  block:5, upgraded:false },
-        { id:'defend3', name:'Defend',         type:'Skill',  cost:1, damage:0,  block:5, upgraded:false },
-        { id:'anger',   name:'Anger',          type:'Attack', cost:0, damage:6,  block:0, upgraded:false },
-        { id:'iron',    name:'Iron Wave',      type:'Attack', cost:1, damage:5,  block:5, upgraded:false },
-        { id:'flame',   name:'Flame Barrier',  type:'Skill',  cost:2, damage:0,  block:12, upgraded:false },
-        { id:'flex',    name:'Flex',           type:'Skill',  cost:0, damage:0,  block:0, upgraded:false },
-      ],
-      discardPile: [
-        { id:'strike5', name:'Strike', type:'Attack', cost:1, damage:6, block:0, upgraded:false },
-        { id:'defend4', name:'Defend', type:'Skill',  cost:1, damage:0, block:5, upgraded:false },
-      ],
-      exhaustPile: [],
-      enemies: [
-        { id:'gremlin1', name:'Mad Gremlin',  currentHp:22, maxHp:28, intentType:'Attack', intentValue:9,  powers:{ Enrage:2 } },
-        { id:'gremlin2', name:'Fat Gremlin',  currentHp:14, maxHp:20, intentType:'Defend', intentValue:6,  powers:{} },
-        { id:'gremlin3', name:'Sneaky Gremlin',currentHp:10, maxHp:10, intentType:'Debuff', intentValue:0, powers:{} },
-      ],
-    }
-  },
-  {
-    eventType: 'card_played',
-    state: {
-      character: 'Ironclad', floorNumber: 7, turnNumber: 3,
-      playerHp: 45, playerMaxHp: 80, block: 5, energy: 2, maxEnergy: 3,
-      powers: { Strength: 2, Vulnerable: 2 },
-      relics: ['Burning Blood', 'Pen Nib', 'Bag of Marbles'],
-      hand: [
-        { id:'strike2', name:'Strike+',       type:'Attack', cost:1, damage:9,  block:0, upgraded:true  },
-        { id:'bash',    name:'Bash',          type:'Attack', cost:2, damage:8,  block:0, upgraded:false },
-        { id:'defend',  name:'Defend',        type:'Skill',  cost:1, damage:0,  block:5, upgraded:false },
-        { id:'shrug',   name:'Shrug It Off',  type:'Skill',  cost:1, damage:0,  block:8, upgraded:false },
-      ],
-      drawPile: [
-        { id:'strike3', name:'Strike',        type:'Attack', cost:1, damage:6,  block:0, upgraded:false },
-        { id:'strike4', name:'Strike',        type:'Attack', cost:1, damage:6,  block:0, upgraded:false },
-        { id:'defend2', name:'Defend',        type:'Skill',  cost:1, damage:0,  block:5, upgraded:false },
-        { id:'anger',   name:'Anger',         type:'Attack', cost:0, damage:6,  block:0, upgraded:false },
-        { id:'iron',    name:'Iron Wave',     type:'Attack', cost:1, damage:5,  block:5, upgraded:false },
-        { id:'flame',   name:'Flame Barrier', type:'Skill',  cost:2, damage:0,  block:12, upgraded:false },
-      ],
-      discardPile: [
-        { id:'strike1', name:'Strike',  type:'Attack', cost:1, damage:6, block:0, upgraded:false },
-        { id:'strike5', name:'Strike',  type:'Attack', cost:1, damage:6, block:0, upgraded:false },
-        { id:'defend4', name:'Defend',  type:'Skill',  cost:1, damage:0, block:5, upgraded:false },
-      ],
-      exhaustPile: [],
-      enemies: [
-        { id:'gremlin1', name:'Mad Gremlin',  currentHp:16, maxHp:28, intentType:'Attack', intentValue:9,  powers:{ Enrage:2 } },
-        { id:'gremlin2', name:'Fat Gremlin',  currentHp:14, maxHp:20, intentType:'Defend', intentValue:6,  powers:{} },
-        { id:'gremlin3', name:'Sneaky Gremlin',currentHp:10, maxHp:10, intentType:'Debuff', intentValue:0, powers:{} },
-      ],
-    }
-  }
-];
-
-let demoIdx = 0;
-
-function toggleDemo() {
-  demoActive = !demoActive;
-  const btn = document.getElementById('demoBtn');
-  btn.classList.toggle('on', demoActive);
-  btn.textContent = demoActive ? 'Demo ON' : 'Demo';
-  if (demoActive) { demoIdx = 0; runDemoTick(); }
-  else clearTimeout(demoTimer);
+function openSeedTab() {
+  document.querySelector('.tab[data-tab="seed"]').click();
 }
 
-function runDemoTick() {
-  if (!demoActive) return;
-  const payload = { ...DEMO_STATES[demoIdx % DEMO_STATES.length], timestamp: Date.now() };
-  renderLive(payload);
-  logEvent(payload.eventType, payload.timestamp);
-  demoIdx++;
-  demoTimer = setTimeout(runDemoTick, 3000);
+async function loadCurrentRng() {
+  seedMode = 'save';
+  try {
+    const r = await fetch('/api/rng/current');
+    if (!r.ok) {
+      const pill = document.getElementById('seedPill').textContent;
+      if (pill) { document.getElementById('seedInput').value = pill; return analyzeSeed(); }
+      document.getElementById('seedSource').textContent = 'No run in progress — type a seed';
+      return;
+    }
+    renderSeedReport(await r.json(), 'save');
+  } catch (err) {
+    document.getElementById('seedMeta').innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`;
+  }
+}
+
+async function analyzeSeed() {
+  const seed = document.getElementById('seedInput').value.trim();
+  if (!seed) return;
+  seedMode = 'seed';
+  const r = await fetch('/api/rng/seed/' + encodeURIComponent(seed));
+  if (r.ok) renderSeedReport(await r.json(), 'seed');
+}
+
+function renderSeedReport(rep, mode) {
+  seedLoaded = true;
+  document.getElementById('seedInput').value = rep.seed;
+  document.getElementById('seedSource').textContent =
+    mode === 'save' ? 'Live: RNG state from current_run.save' : 'Run start: state derived from the seed alone';
+  document.getElementById('seedMeta').innerHTML =
+    `Seed <b class="mono">${esc(rep.seed)}</b> &rarr; XxHash64 &rarr; <span class="mono">${rep.seedHashHex}</span>. ` +
+    `Each stream is seeded with <span class="mono">hash + XxHash64(stream_name)</span>, expanded by SplitMix64 into xoshiro256** state. ` +
+    `Streams never share numbers, so e.g. using a potion can't change your card rewards.`;
+
+  renderOpening(rep, mode);
+  renderUnknownRooms(rep.unknownRooms || []);
+  renderStreams(rep.streams || [], rep.shuffleSeeds || []);
+}
+
+function renderOpening(rep, mode) {
+  const panel = document.getElementById('openingPanel');
+  const meta = document.getElementById('openingMeta');
+  const o = rep.openingDraw;
+  if (!o) {
+    meta.textContent = '';
+    panel.innerHTML = `<div class="empty" style="height:80px;"><div>${mode === 'seed'
+      ? 'Needs your deck — start the run so the save file exists'
+      : 'No deck in save'}</div></div>`;
+    return;
+  }
+  meta.textContent = `shuffle seed ${o.childSeed.slice(0, 8)}…`;
+  const chip = (c, i) => `<span class="card-chip${c.innate ? ' power' : ''}" title="${esc(c.id)}${c.innate ? ' (Innate)' : ''}">` +
+    `<span class="cost">${i + 1}</span>${esc(c.name)}</span>`;
+  panel.innerHTML =
+    `<div class="sec-hdr" style="margin-top:0;">Turn 1 hand</div>
+     <div class="hand-grid">${o.hand.map(chip).join('')}</div>
+     <div class="sec-hdr">Full draw order (top &rarr; bottom)</div>
+     <div class="draw-order">${o.drawOrder.map(chip).join('')}</div>
+     <div class="note">Exact when the save was written on entering this room (the game saves <i>before</i> setting up combat).
+       Changes if the deck changes first, or if relics/powers draw extra cards or reorder the pile.
+       Each reshuffle in a fight uses the next value of the Shuffle stream, so fights shift the next fight's hand.</div>`;
+}
+
+function renderUnknownRooms(rows) {
+  const pct = v => (v * 100).toFixed(0) + '%';
+  document.getElementById('unknownPanel').innerHTML =
+    `<table class="rt"><thead><tr><th>#</th><th>Becomes</th><th>Roll</th><th>Odds before</th></tr></thead><tbody>` +
+    rows.map(r => `<tr>
+        <td>${r.n}</td>
+        <td><span class="room ${r.roomType}">${r.roomType}</span></td>
+        <td class="mono">${r.roll.toFixed(4)}</td>
+        <td class="mono" style="color:var(--muted)">M ${pct(r.chance.Monster ?? 0)} · T ${pct(r.chance.Treasure ?? 0)} · S ${pct(r.chance.Shop ?? 0)} · E ${pct(r.chance.Event)}</td>
+      </tr>`).join('') +
+    `</tbody></table>
+     <div class="note">The n-th &ldquo;?&rdquo; you enter rolls the n-th number of the UnknownMapPoint stream &mdash; no matter what you do in between.
+       Shop is skipped if you just left a shop or every next node is a shop. Relics that alter &ldquo;?&rdquo; odds aren't modelled yet.</div>`;
+}
+
+function renderStreams(streams, shuffleSeeds) {
+  document.getElementById('streamsPanel').innerHTML =
+    `<table class="rt"><thead><tr><th>Stream</th><th>Owner</th><th>Calls used</th><th>Next 5 rolls (0&ndash;1)</th><th>Drives</th></tr></thead><tbody>` +
+    streams.map(s => `<tr>
+        <td class="mono">${esc(s.key)}</td>
+        <td style="color:var(--muted)">${s.kind}</td>
+        <td class="sval">${s.counter}</td>
+        <td class="mono">${s.next.map(v => v.toFixed(3)).join(' ')}</td>
+        <td style="color:var(--muted)">${esc(s.description)}</td>
+      </tr>`).join('') +
+    `</tbody></table>
+     <div class="sec-hdr">Next shuffle seeds (one per opening shuffle / reshuffle)</div>
+     <div class="mono" style="color:var(--muted);line-height:1.7;">${shuffleSeeds.map(x => `#${x.index}: ${x.childSeed}`).join('<br>')}</div>`;
 }
 
 // ── Util ───────────────────────────────────────────────────────────────────────
