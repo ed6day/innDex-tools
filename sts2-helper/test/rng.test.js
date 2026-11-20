@@ -33,6 +33,8 @@ for (const v of vectors.seeds) {
       assert.deepEqual(s.doubles.map(() => r.nextDouble()), s.doubles, `${type} NextDouble`);
       assert.deepEqual(r.unstableShuffle([...Array(12).keys()]), s.shuffled, `${type} UnstableShuffle`);
       assert.deepEqual(r.stableShuffle([5, 3, 9, 1, 1, 7, 2], (a, b) => a - b), s.stable, `${type} StableShuffle`);
+      assert.deepEqual(s.franges.map((_, i) => (i % 2 === 0 ? r.nextFloat(0.95, 1.05) : r.nextFloat(0.85, 1.15))),
+        s.franges.map(Math.fround), `${type} NextFloat(min,max)`);
       assert.equal(r.counter, s.after.counter, `${type} counter`);
       assert.equal(r.toSerializable().s0, s.after.s0, `${type} final state`);
     }

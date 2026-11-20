@@ -26,12 +26,13 @@ foreach (var seed in seeds)
         var doubles = Enumerable.Range(0, 2).Select(_ => r.NextDouble()).ToList();
         var shuffled = Enumerable.Range(0, 12).ToList().UnstableShuffle(r);
         var stable = new List<int> { 5, 3, 9, 1, 1, 7, 2 }.StableShuffle(r);
+        var franges = Enumerable.Range(0, 6).Select(i => i % 2 == 0 ? r.NextFloat(0.95f, 1.05f) : r.NextFloat(0.85f, 1.15f)).ToList();
         var after = r.ToSerializable();
         streams[t.ToString()] = new
         {
             name = StringHelper.SnakeCase(t.ToString()),
             init = new { init.counter, s0 = init.state0.ToString(), s1 = init.state1.ToString(), s2 = init.state2.ToString(), s3 = init.state3.ToString() },
-            ulongs, ints, range, floats, bools, doubles, shuffled, stable,
+            ulongs, ints, range, floats, bools, doubles, shuffled, stable, franges,
             after = new { after.counter, s0 = after.state0.ToString() },
         };
     }

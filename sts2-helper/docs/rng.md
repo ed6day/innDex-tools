@@ -85,6 +85,31 @@ Card pools in game order, rarities and unlock epochs are exported from the game'
   shops, transforms, and the random pickups of Lead Paperweight, Hefty Tablet, Silken Tress,
   Small Capsule, Fishing Rod, Kaleidoscope, New Leaf, Leafy Poultice and Scroll Boxes.
 
+## Map, fights, events and shops (lib/route.js, Map tab)
+
+At run start (UpFront stream) each act gets fixed, ordered lists of normal encounters, elites,
+events and a boss; the save stores them with "visited" counters. The n-th normal fight of the
+act is `normal_encounter_ids[visited + n]`, and likewise for elites. Events work the same way,
+skipping ones already seen. Neow counts as the first event. The current act's map is in the
+save (`acts[i].saved_map`).
+
+The route simulator walks a planned path and consumes every stream in the game's order:
+`?` rolls (UnknownMapPoint), fight rewards (Rewards, with the potion-drop odds carried
+forward), elite relic pulls, treasure gold (Rewards) and chest relic (TreasureRoomRelics +
+shared bag), and shop stock (Shops).
+
+Shops: 2 relic rarity rolls; 3 relics from the **back** of the relic bag (price ×0.85–1.15);
+3 potions (×0.95–1.05); 5 character cards (Attack, Attack, Skill, Skill, Power: rarity, pick,
+upgrade roll, price); 2 colorless cards (Uncommon, Rare); then 1 character card on half-price
+sale. Card removal costs 75 + 25 per removal, or 100 + 50 at Ascension 6+.
+
+Events that can hand out rewards (27 of 73) are flagged, because what they use depends on the
+option you pick. Forecasts after them are marked uncertain.
+
+Verified in game (seed `2HZ7UB0D8KD2`): the Hefty Tablet choices, the first fight's cards and
+potion after Hefty Tablet, the Fuzzy Wurm Crawler fight's cards, and the first `?` event.
+Not yet verified: shop stock.
+
 ## Why the save file matters
 
 `current_run.save` stores every stream's live state (`counter`, `s0..s3`) and the `?` odds.

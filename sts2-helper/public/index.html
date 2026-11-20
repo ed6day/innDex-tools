@@ -242,6 +242,32 @@
     .rar.Rare { background: rgba(251,191,36,.15); color: var(--warn); }
     .rlist { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 
+    /* ── Map pane ── */
+    #mapPane > div { flex: 1; display: grid; grid-template-columns: minmax(380px, 460px) 1fr; gap: 12px; padding: 12px; overflow: hidden; }
+    #mapPane .col { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    #mapSvg { display: block; margin: 0 auto; }
+    #mapSvg .edge { stroke: var(--border); stroke-width: 2; }
+    #mapSvg .edge.walked { stroke: var(--muted); }
+    #mapSvg .edge.route { stroke: var(--accent); stroke-width: 3; }
+    #mapSvg .node circle { fill: var(--panel2); stroke: var(--border); stroke-width: 2; }
+    #mapSvg .node text { font: 700 13px Inter, system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+    #mapSvg .node.visited circle { fill: var(--border); }
+    #mapSvg .node.current circle { stroke: var(--warn); stroke-width: 3; }
+    #mapSvg .node.route circle { stroke: var(--accent); stroke-width: 3; fill: rgba(124,131,245,.18); }
+    #mapSvg .node.next { cursor: pointer; }
+    #mapSvg .node.next circle { stroke: var(--good); stroke-dasharray: 3 2; }
+    #mapSvg .node.onroute { cursor: pointer; }
+    .t-monster { fill: var(--text); } .t-elite { fill: var(--bad); } .t-boss { fill: var(--bad); }
+    .t-unknown { fill: var(--accent); } .t-shop { fill: var(--good); } .t-treasure { fill: var(--warn); }
+    .t-rest_site { fill: #fb923c; } .t-ancient { fill: var(--pow); }
+    .step { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .step h4 { font-size: 12px; font-weight: 700; display: flex; gap: 6px; align-items: baseline; }
+    .step h4 .n { color: var(--muted); font-weight: 600; }
+    .step.uncertain { opacity: .7; border-style: dashed; }
+    .flag { font-size: 10px; color: var(--warn); margin-top: 4px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 10px; color: var(--muted); margin-top: 6px; }
+
     /* ── Empty state ── */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 6px; color: var(--muted); }
     .empty .big { font-size: 32px; }
@@ -261,6 +287,7 @@
       <div class="tab active" data-tab="live">Live</div>
       <div class="tab" data-tab="runs">History</div>
       <div class="tab" data-tab="seed">Seed</div>
+      <div class="tab" data-tab="map">Map</div>
     </div>
     <div class="seed-pill" id="seedPill" title="Run seed — click for RNG forecast" onclick="openSeedTab()"></div>
     <div class="conn" id="connBadge" onclick="reconnect()" title="Click to reconnect">
@@ -361,6 +388,36 @@
       </div>
     </div>
 
+    <!-- Map tab -->
+    <div class="pane" id="mapPane">
+      <div>
+        <div class="col">
+          <div class="panel">
+            <div class="ph">Act map <span class="ph-right" id="mapMeta" style="color:var(--muted);"></span></div>
+            <div class="pb">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                <button class="btn btn-g" onclick="setRoute([])">Clear route</button>
+                <span class="note" style="margin:0;">Click a dashed node to extend your route; click a route node to cut it back.</span>
+              </div>
+              <svg id="mapSvg"></svg>
+              <div class="legend"><span>&#9876; fight</span><span style="color:var(--bad)">&#9760; elite</span><span style="color:var(--accent)">? unknown</span>
+                <span style="color:var(--good)">$ shop</span><span style="color:var(--warn)">&#9670; treasure</span><span style="color:#fb923c">&#9832; rest</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="panel">
+            <div class="ph">Your route <span class="ph-right" id="routeMeta" style="color:var(--muted);"></span></div>
+            <div class="pb" id="routePanel"><div class="empty" style="height:80px;"><div>Click nodes on the map to plan a route</div></div></div>
+          </div>
+          <div class="panel">
+            <div class="ph">Coming up this act (whatever path you take)</div>
+            <div class="pb" id="lookaheadPanel"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Seed tab -->
     <div class="pane" id="seedPane">
       <div>
@@ -408,7 +465,7 @@
 <script>
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 
-let ws, reconnTimer;
+let ws, reconnTimer, serverBuild = null;
 
 function connect() {
   clearTimeout(reconnTimer);
@@ -418,7 +475,16 @@ function connect() {
   ws.onclose   = () => { setConn('off', 'Disconnected'); reconnTimer = setTimeout(connect, 3000); };
   ws.onerror   = () => ws.close();
   ws.onmessage = ({ data }) => {
-    try { const p = JSON.parse(data); renderLive(p); logEvent(p.eventType, p.timestamp); }
+    try {
+      const p = JSON.parse(data);
+      if (p.type === 'hello') {
+        // A restarted server may be running new code: reload so this page isn't stale.
+        if (serverBuild && serverBuild !== p.build) location.reload();
+        serverBuild = p.build;
+        return;
+      }
+      renderLive(p); logEvent(p.eventType, p.timestamp);
+    }
     catch {}
   };
 }
@@ -448,6 +514,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   document.getElementById(t.dataset.tab + 'Pane').classList.add('active');
   if (t.dataset.tab === 'runs') loadRuns(1);
   if (t.dataset.tab === 'seed' && !seedLoaded) loadCurrentRng();
+  if (t.dataset.tab === 'map') loadMap();
 }));
 
 loadRuns(1);
@@ -461,6 +528,7 @@ function renderLive(payload) {
   const combatLabel = isSave ? 'Between combats' : `T${s.turnNumber ?? 0}`;
   if (s.seed !== undefined) document.getElementById('seedPill').textContent = s.seed || '';
   if (isSave && seedMode === 'save' && document.getElementById('seedPane').classList.contains('active')) loadCurrentRng();
+  if (isSave && document.getElementById('mapPane').classList.contains('active')) loadMap();
   document.getElementById('floorMeta').textContent =
     s.character ? `${s.character} | Floor ${s.floorNumber ?? '?'} | ${combatLabel}` : '';
   document.getElementById('drawPanelTitle').textContent = isSave ? 'Deck' : 'Draw Probability';
@@ -789,6 +857,12 @@ function renderOpening(rep, mode) {
        Each reshuffle in a fight uses the next value of the Shuffle stream, so fights shift the next fight's hand.</div>`;
 }
 
+// Encounter ids: drop the room-type suffix, mark weak (early-act) variants.
+function prettyEnc(id) {
+  const weak = /_WEAK$/.test(id || '');
+  return pretty(String(id || '').replace(/_(NORMAL|ELITE|BOSS|WEAK)$/, '')) + (weak ? ' (weak)' : '');
+}
+
 function pretty(id) {
   return String(id || '').replace(/^[A-Z_]+\./, '').split('_')
     .map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
@@ -802,8 +876,8 @@ function potionLine(p) {
   return p ? `<div>&#9883; ${esc(pretty(p.id))}${p.rarity ? `<span class="rar ${p.rarity}">${p.rarity}</span>` : ''}</div>` : '';
 }
 
-function neowOutcome(o) {
-  if (!o) return '<div class="sub">Pickup isn\'t random (or not modelled yet)</div>';
+function neowOutcome(o, effect) {
+  if (!o) return `<div class="sub">${esc(effect || '')}</div>`;
   let h = '';
   if (o.cardChoice) h += '<div class="sub">Choose 1 of</div>' + o.cardChoice.map(cardLine).join('');
   if (o.cards) h += '<div class="sub">Adds to deck</div>' + o.cards.map(cardLine).join('');
@@ -839,7 +913,7 @@ function renderRewards(r) {
   let html = '';
   if (r.neow) {
     html += `<div class="sec-hdr" style="margin-top:0;">Neow &mdash; what each option gives</div>
-      <div class="reward-grid">${r.neow.map(o => `<div class="reward-box"><h4>${esc(pretty(o.relic))}</h4><div class="rlist">${neowOutcome(o.outcome)}${firstFightLine(o.firstFight)}</div></div>`).join('')}</div>`;
+      <div class="reward-grid">${r.neow.map(o => `<div class="reward-box"><h4>${esc(pretty(o.relic))}</h4><div class="rlist">${neowOutcome(o.outcome, o.effect)}${firstFightLine(o.firstFight)}</div></div>`).join('')}</div>`;
   }
   html += `<div class="sec-hdr"${r.neow ? '' : ' style="margin-top:0;"'}>Next fight rewards (if nothing else uses the Rewards stream first)</div>
     <div class="reward-grid">${fightRewards('Normal fight', r.nextMonster)}${fightRewards('Elite fight', r.nextElite)}</div>
@@ -877,6 +951,149 @@ function renderStreams(streams, shuffleSeeds) {
     `</tbody></table>
      <div class="sec-hdr">Next shuffle seeds (one per opening shuffle / reshuffle)</div>
      <div class="mono" style="color:var(--muted);line-height:1.7;">${shuffleSeeds.map(x => `#${x.index}: ${x.childSeed}`).join('<br>')}</div>`;
+}
+
+// ── Map & route ────────────────────────────────────────────────────────────────
+
+let mapData = null, route = [];
+const GLYPH = { monster: '\u2694', elite: '\u2620', boss: 'B', unknown: '?', shop: '$', treasure: '\u25C6', rest_site: '\u2668', ancient: 'N' };
+const routeKey = () => mapData ? `sts2-route-${mapData.seed}-${mapData.map.act}` : '';
+
+async function loadMap() {
+  const r = await fetch('/api/map');
+  if (!r.ok) {
+    document.getElementById('mapMeta').textContent = 'No run in progress';
+    return;
+  }
+  mapData = await r.json();
+  try { route = JSON.parse(localStorage.getItem(routeKey()) || '[]'); } catch { route = []; }
+  route = validRoute(route);
+  drawMap();
+  renderLookahead(mapData.lookahead);
+  loadRoute();
+}
+
+// Keep only the part of a saved route that still follows edges from the current node.
+function validRoute(r) {
+  const m = mapData.map;
+  const out = [];
+  let prev = m.current;
+  for (const k of r) {
+    if (!m.nodes[prev]?.children.includes(k)) break;
+    out.push(k); prev = k;
+  }
+  return out;
+}
+
+function setRoute(r) {
+  route = r;
+  try { localStorage.setItem(routeKey(), JSON.stringify(route)); } catch {}
+  drawMap();
+  loadRoute();
+}
+
+function clickNode(k) {
+  const i = route.indexOf(k);
+  if (i >= 0) return setRoute(route.slice(0, i + 1 === route.length ? i : i + 1));
+  const end = route.length ? route[route.length - 1] : mapData.map.current;
+  if (mapData.map.nodes[end].children.includes(k)) setRoute([...route, k]);
+}
+
+function drawMap() {
+  const m = mapData.map, svg = document.getElementById('mapSvg');
+  const dx = 56, dy = 50, pad = 24;
+  const W = (m.width) * dx + pad * 2, H = (m.height + 1) * dy + pad * 2;
+  const pos = n => [pad + n.col * dx + dx / 2, pad + (m.height - n.row) * dy + dy / 2];
+  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const walked = new Set(m.visited), onRoute = new Set(route);
+  const pathNodes = [m.current, ...route];
+  const routeEdge = (a, b) => pathNodes.some((k, i) => k === a && pathNodes[i + 1] === b);
+  const end = route.length ? route[route.length - 1] : m.current;
+  const nextSet = new Set(m.nodes[end]?.children || []);
+  let edges = '', nodes = '';
+  for (const [k, n] of Object.entries(m.nodes)) {
+    const [x1, y1] = pos(n);
+    for (const c of n.children) {
+      const t = m.nodes[c]; if (!t) continue;
+      const [x2, y2] = pos(t);
+      const cls = routeEdge(k, c) ? 'route' : (walked.has(k) && walked.has(c)) ? 'walked' : '';
+      edges += `<line class="edge ${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }
+  }
+  for (const [k, n] of Object.entries(m.nodes)) {
+    const [x, y] = pos(n);
+    const cls = ['node', walked.has(k) ? 'visited' : '', k === m.current ? 'current' : '',
+      onRoute.has(k) ? 'route onroute' : '', nextSet.has(k) ? 'next' : ''].join(' ');
+    const r = n.type === 'boss' ? 18 : 14;
+    nodes += `<g class="${cls}" data-k="${k}"><title>${n.type.replace('_', ' ')} (${k})</title>
+      <circle cx="${x}" cy="${y}" r="${r}"/><text class="t-${n.type}" x="${x}" y="${y}">${GLYPH[n.type] || '\u00B7'}</text></g>`;
+  }
+  svg.innerHTML = edges + nodes;
+  svg.querySelectorAll('.node.next, .node.onroute').forEach(g => g.addEventListener('click', () => clickNode(g.dataset.k)));
+  document.getElementById('mapMeta').textContent = `${pretty(m.actId)} \u00B7 seed ${mapData.seed}`;
+}
+
+async function loadRoute() {
+  const r = await fetch('/api/route?path=' + encodeURIComponent(route.join(';')));
+  if (!r.ok) return;
+  renderRoute(await r.json());
+}
+
+function rewardsBlock(rw) {
+  if (!rw) return '';
+  return `<div class="sub" style="margin-top:4px;">Card choice</div>${rw.cards.map(cardLine).join('')}
+    ${rw.potionDropped ? potionLine(rw.potion) : '<div class="sub">No potion</div>'}
+    ${rw.relic ? `<div>&#9670; ${esc(pretty(rw.relic))}</div>` : ''}`;
+}
+
+function shopBlock(sh) {
+  const line = (name, price, extra = '') => `<div>${esc(name)} <span class="sub" style="display:inline">${price}g${extra}</span></div>`;
+  return `<div class="two"><div><div class="sub">Cards</div>${sh.cards.map(c => line(pretty(c.id), c.price, c.onSale ? ' \u2013 sale' : '')).join('')}</div>
+    <div><div class="sub">Relics</div>${sh.relics.map(r => line(pretty(r.id), r.price)).join('')}
+    <div class="sub" style="margin-top:4px;">Potions</div>${sh.potions.map(p => line(pretty(p.id), p.price)).join('')}
+    <div class="sub" style="margin-top:4px;">Card removal ${sh.removalPrice}g</div></div></div>`;
+}
+
+function renderRoute(res) {
+  const panel = document.getElementById('routePanel');
+  if (!res || !res.steps.length) {
+    panel.innerHTML = '<div class="empty" style="height:80px;"><div>Click a dashed node on the map to start your route</div></div>';
+    document.getElementById('routeMeta').textContent = '';
+    return;
+  }
+  document.getElementById('routeMeta').textContent = `${res.steps.length} rooms` + (res.includesCurrent ? ' (incl. current)' : '');
+  panel.innerHTML = res.steps.map((st, i) => {
+    const title = st.encounter ? prettyEnc(st.encounter) : st.event ? pretty(st.event) : st.roomType === 'RestSite' ? 'Rest site'
+      : st.roomType === 'Treasure' ? 'Treasure' : st.roomType === 'Shop' ? `Shop #${st.shopIndex}` : st.roomType;
+    const via = st.mapType === 'unknown' ? ` <span class="sub" style="display:inline">(? \u2192 ${st.roomType}, roll ${st.unknownRoll.toFixed(3)})</span>` : '';
+    let body = '';
+    if (st.rewards) body += rewardsBlock(st.rewards);
+    if (st.relic) body += `<div>&#9670; ${esc(pretty(st.relic))}</div>`;
+    if (st.shop) body += shopBlock(st.shop);
+    if (st.mayShiftRewards) body += '<div class="flag">This event can hand out rewards: forecasts after it depend on what you pick.</div>';
+    if (st.uncertain) body += '<div class="flag">Assumes the earlier event didn\'t use the Rewards stream.</div>';
+    const n = st.fightIndex ? `fight ${st.fightIndex}` : '';
+    return `<div class="step${st.uncertain ? ' uncertain' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
+  }).join('<div style="height:6px"></div>');
+}
+
+function renderLookahead(L) {
+  const list = (arr, f) => `<ol style="margin:4px 0 0 18px;line-height:1.7;font-size:12px;">${arr.map(f).join('')}</ol>`;
+  document.getElementById('lookaheadPanel').innerHTML = `
+    <div class="two">
+      <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li>${esc(prettyEnc(e))}</li>`)}
+        <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)">${esc(prettyEnc(e))}</li>`)}
+        <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}</div></div>
+      <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}</li>`)}
+        <div class="note"><span style="color:var(--warn)">\u2022</span> can hand out rewards (shifts later card forecasts)</div></div>
+    </div>
+    <div class="sec-hdr">Card rewards if your next fights are all normal fights</div>
+    ${list(L.normalFightRewards, (f, i) => `<li>${f.cards.map(c => `${esc(pretty(c.id))}<span class="rar ${c.rarity}">${c.rarity[0]}</span>`).join(', ')}${f.potionDropped ? ` + ${esc(pretty(f.potion.id))}` : ''}</li>`)}
+    <div class="sec-hdr">Next shops (n-th shop you enter)</div>
+    ${L.shops.map((sh, i) => `<div class="step" style="margin-bottom:6px;"><h4>Shop #${i + 1}</h4>${shopBlock(sh)}</div>`).join('')}
+    <div class="note">Fights, events and shops each come from their own fixed list or stream, so the n-th one is known
+      regardless of path. Card rewards depend on which rooms you go through (elites, treasure, relic pulls);
+      plan a route on the map for exact numbers. Shop card rarities shift slightly with your card-reward luck.</div>`;
 }
 
 // ── Util ───────────────────────────────────────────────────────────────────────

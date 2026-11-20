@@ -7,6 +7,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const { parseJsonBigSafe, canonicalizeSeed } = require('./lib/rng');
 const { seedReport, saveReport } = require('./lib/predict');
+const { mapFromSave, simulateRoute, lookahead } = require('./lib/route');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -104,7 +105,11 @@ function broadcast(payload) {
   wss.clients.forEach(c => { if (c.readyState === c.OPEN) c.send(msg); });
 }
 
+// Changes on every server start; the dashboard reloads itself when it sees a new one.
+const BUILD_ID = String(Date.now());
+
 wss.on('connection', ws => {
+  ws.send(JSON.stringify({ type: 'hello', build: BUILD_ID }));
   if (latestState) ws.send(JSON.stringify(latestState));
   ws.on('error', err => console.error('[WS]', err.message));
 });
@@ -261,6 +266,22 @@ app.get('/api/rng/current', (req, res) => {
   const report = latestSave && fs.existsSync(latestSavePath) && saveReport(latestSave);
   if (!report) return res.status(404).json({ error: 'No run in progress (no current_run.save found)' });
   res.json(report);
+});
+
+// Current act map plus path-independent lookahead (next fights, events, shops).
+app.get('/api/map', (req, res) => {
+  if (!latestSave || !fs.existsSync(latestSavePath)) return res.status(404).json({ error: 'No run in progress' });
+  try {
+    res.json({ seed: latestSave.rng?.seed, map: mapFromSave(latestSave), lookahead: lookahead(latestSave) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Simulate a planned path: ?path=col,row;col,row;... (nodes after the current one).
+app.get('/api/route', (req, res) => {
+  if (!latestSave || !fs.existsSync(latestSavePath)) return res.status(404).json({ error: 'No run in progress' });
+  const path = String(req.query.path || '').split(';').filter(k => /^\d+,\d+$/.test(k));
+  try { res.json(simulateRoute(latestSave, path)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Save-file watcher ─────────────────────────────────────────────────────────

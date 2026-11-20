@@ -156,19 +156,24 @@ function createRandomPotions(ctx, count, rng) {
 // RewardsSet.GenerateRewardsFor + Populate, for Monster / Elite rooms. Rewards-stream order:
 // potion-drop roll (PotionRewardOdds.Roll), gold NextInt, potion (if dropped), 3 cards.
 // The gold range depends on the encounter, but it always consumes exactly one value.
-function predictCombatRewards(ctx, roomType, potionOddsValue) {
+// Elite rooms add a relic after the cards. Advances the potion-drop odds on ctx.
+function predictCombatRewards(ctx, roomType) {
   const rng = ctx.rngs.Rewards;
+  const odds = ctx.potionOddsValue;
   const bonus = roomType === 'Elite' ? Math.fround(0.25) : 0;
   const potionRoll = rng.nextFloat();
-  const potionDropped = potionRoll < Math.fround(Math.fround(potionOddsValue) + Math.fround(bonus * 0.5));
+  const potionDropped = potionRoll < Math.fround(odds + Math.fround(bonus * 0.5));
+  // PotionRewardOdds.Roll: CurrentValue -= 0.1 on a drop, += 0.1 otherwise (float)
+  ctx.potionOddsValue = Math.fround(odds + (potionDropped ? -Math.fround(0.1) : Math.fround(0.1)));
   rng.nextInt(10, 11); // GoldReward.Populate
   const potion = potionDropped ? createRandomPotions(ctx, 1, rng)[0] : null;
   const cards = createCardsForReward(ctx, 3, {
     pools: [characterPools(ctx).cardPool],
-    rarityOdds: roomType === 'Elite' ? 'EliteEncounter' : 'RegularEncounter',
+    rarityOdds: { Elite: 'EliteEncounter', Boss: 'BossEncounter' }[roomType] || 'RegularEncounter',
     source: 'Encounter',
   });
-  return { roomType, potionRoll, potionChance: potionOddsValue + bonus * 0.5, potionDropped, potion, cards };
+  const relic = roomType === 'Elite' ? pullRelicForReward(ctx) : null;
+  return { roomType, potionRoll, potionChance: odds + bonus * 0.5, potionDropped, potion, cards, relic };
 }
 
 // ── Relics ────────────────────────────────────────────────────────────────────
@@ -182,6 +187,83 @@ function pullRelicForReward(ctx, rng = ctx.rngs.Rewards) {
   const next = { shop: 'common', common: 'uncommon', uncommon: 'rare' };
   while (rarity && !(ctx.grabBag[rarity] || []).length) rarity = next[rarity];
   return rarity ? ctx.grabBag[rarity].shift() : null;
+}
+
+// RelicGrabBag.PullFromBack (shops): last relic of that rarity passing the filter.
+function pullRelicFromBack(ctx, rarity, filter) {
+  const next = { shop: 'common', common: 'uncommon', uncommon: 'rare' };
+  while (rarity && !(ctx.grabBag[rarity] || []).some(filter)) rarity = next[rarity];
+  if (!rarity) return null;
+  const list = ctx.grabBag[rarity];
+  for (let i = list.length - 1; i >= 0; i--) if (filter(list[i])) return { id: list.splice(i, 1)[0], rarity };
+  return null;
+}
+
+// ── Shops ─────────────────────────────────────────────────────────────────────
+
+const RELIC_COST = { common: 175, uncommon: 225, rare: 275, shop: 200 };
+const NOT_IN_SHOPS = new Set(['RELIC.AMETHYST_AUBERGINE', 'RELIC.BOWLER_HAT', 'RELIC.LUCKY_FYSH', 'RELIC.OLD_COIN', 'RELIC.THE_COURIER']);
+// Math.Round / Mathf.RoundToInt: midpoints round to even.
+function roundEven(x) {
+  const f = Math.floor(x), d = x - f;
+  return d > 0.5 || (d === 0.5 && f % 2 !== 0) ? f + 1 : f;
+}
+
+function rollRelicRarity(rng) {
+  const r = rng.nextFloat();
+  return r < Math.fround(0.5) ? 'common' : r < Math.fround(0.83) ? 'uncommon' : 'rare';
+}
+
+function shopCardBase(card) {
+  const base = card.rarity === 'Rare' ? 150 : card.rarity === 'Uncommon' ? 75 : 50;
+  return card.colorless ? roundEven(Math.fround(base * Math.fround(1.15))) : base;
+}
+
+// MerchantInventory.CreateForNormalMerchant, in Shops-stream order: relic rarities, relics
+// (+price), potions (+price), then Setup: each card (rarity, pick, upgrade roll, price), sale.
+// Prices ignore relics that change them (Membership Card, The Courier).
+function generateShop(ctx, removalsUsed = 0) {
+  const rng = ctx.rngs.Shops;
+  const rarities = [rollRelicRarity(rng), rollRelicRarity(rng), 'shop'];
+  const relics = [];
+  for (const rarity of rarities) {
+    const got = pullRelicFromBack(ctx, rarity, id => !NOT_IN_SHOPS.has(id) && !relics.some(r => r.id === id));
+    if (!got) continue;
+    relics.push({ ...got, price: roundEven(Math.fround(RELIC_COST[got.rarity] * rng.nextFloat(0.85, 1.15))) });
+  }
+  const potionBase = { Rare: 100, Uncommon: 75, Common: 50 };
+  const potions = createRandomPotions(ctx, 3, rng).filter(Boolean)
+    .map(p => ({ ...p, price: roundEven(Math.fround(potionBase[p.rarity] * rng.nextFloat(0.95, 1.05))) }));
+
+  const charPool = unlockedCards(ctx, characterPools(ctx).cardPool);
+  const colorPool = unlockedCards(ctx, 'COLORLESS_CARD_POOL');
+  const cards = [];
+  const taken = id => cards.some(c => c.id === id);
+  for (const type of ['Attack', 'Attack', 'Skill', 'Skill', 'Power']) {
+    const options = charPool.filter(c => c.rarity !== 'Basic' && !taken(c.id));
+    const { rarity: rolled } = rollRarity(ctx, 'Shop', rng, ctx.cardRarityOffset);
+    const rarity = nextAllowedRarity(rolled, new Set(options.filter(c => c.type === type).map(c => c.rarity)));
+    const card = rng.nextItem(options.filter(c => c.rarity === rarity && c.type === type));
+    rng.nextFloat(); // RollForUpgrade with a hopeless base chance
+    cards.push(priced({ id: card.id, rarity: card.rarity, type: card.type, colorless: false }, rng));
+  }
+  for (const rarity of ['Uncommon', 'Rare']) {
+    const card = rng.nextItem(colorPool.filter(c => c.rarity === rarity && !taken(c.id)));
+    rng.nextFloat();
+    cards.push(priced({ id: card.id, rarity: card.rarity, type: card.type, colorless: true }, rng));
+  }
+  // One of the 5 character cards goes on sale: its price is re-rolled, then halved.
+  const sale = cards[rng.nextInt(5)];
+  sale.onSale = true;
+  sale.price = Math.trunc(priced({ ...sale }, rng).price / 2);
+  const removalPrice = ctx.ascension >= 6 ? 100 + 50 * removalsUsed : 75 + 25 * removalsUsed;
+  return { cards, relics, potions, removalPrice };
+}
+
+// MerchantCardEntry.CalcCost: drawn right after that card's own rolls.
+function priced(card, rng) {
+  card.price = roundEven(Math.fround(shopCardBase(card) * rng.nextFloat(0.95, 1.05)));
+  return card;
 }
 
 // Pickup (AfterObtained) effects that change what you get or which RNG is used.
@@ -264,6 +346,16 @@ const NEOW_OUTCOMES = {
     }),
   }),
   PHIAL_HOLSTER: ctx => ({ potionSlots: 1, potions: createRandomPotions(ctx, 2, ctx.rngs.NonCombatGeneration) }),
+  HEFTY_TABLET: ctx => ({
+    cardChoice: createCardsForReward(ctx, 3, {
+      pools: [characterPools(ctx).cardPool], rarityOdds: 'Uniform', source: 'Other',
+      filter: c => c.rarity === 'Rare', noUpgradeRoll: true,
+    }),
+    curses: ['CARD.INJURY'],
+  }),
+  LEAD_PAPERWEIGHT: ctx => ({
+    cardChoice: createCardsForReward(ctx, 2, { pools: ['COLORLESS_CARD_POOL'], rarityOdds: 'RegularEncounter', source: 'Other' }),
+  }),
   NEOWS_BONES: ctx => {
     const rng = ctx.rngs.NonCombatGeneration;
     const relics = rng.unstableShuffle(NEOW_ALL.filter(r => r !== 'NEOWS_BONES' && allowedAtNeow(ctx, r))).slice(0, 2);
@@ -306,15 +398,23 @@ function neowReport(save) {
     return {
       relic: 'RELIC.' + relic,
       outcome,
-      firstFight: modelled ? predictCombatRewards(c, 'Monster', c.potionOddsValue) : null,
+      effect: outcome ? null : (NEOW_FIXED_EFFECTS[relic] || (modelled ? 'No randomness on pickup (see the in-game tooltip).' : 'Random pickup, not modelled yet.')),
+      firstFight: modelled ? predictCombatRewards(c, 'Monster') : null,
     };
   });
 }
 
 // Neow relics whose pickup uses RNG we don't model yet (their first-fight forecast is unknown).
 const HAS_RANDOM_PICKUP = new Set(['FISHING_ROD', 'KALEIDOSCOPE', 'NEW_LEAF', 'LEAFY_POULTICE', 'SCROLL_BOXES',
-  'LEAD_PAPERWEIGHT', 'HEFTY_TABLET', 'SILKEN_TRESS',
   'SMALL_CAPSULE', 'MASSIVE_SCROLL']);
+
+// Plain-language effects for Neow relics whose pickup has no randomness (from their code).
+const NEOW_FIXED_EFFECTS = {
+  PRECISE_SCISSORS: 'Remove 1 card from your deck.',
+  SILKEN_TRESS: 'Lose all your gold; the cards in your next card reward are enchanted with Glam.',
+  LAVA_ROCK: 'Act 1 boss drops 2 extra relics.',
+  NEOWS_SACRIFICE: 'Gain Ambergris (potion) and the curse Guilty.',
+};
 
 // Reward forecasts for a current_run.save. Neow is included only before it's resolved.
 function rewardsReport(save) {
@@ -322,16 +422,16 @@ function rewardsReport(save) {
   const ctx = contextFromSave(save);
   if (!DATA.characters[ctx.character]) return null;
   const history = (save.map_point_history || []).flat();
-  const potionOdds = save.players[0].odds?.potion_reward_odds_value ?? 0.4;
   return {
     neow: history.length === 0 && ctx.actIndex === 0 ? neowReport(save) : null,
-    nextMonster: predictCombatRewards(cloneCtx(ctx), 'Monster', potionOdds),
-    nextElite: predictCombatRewards(cloneCtx(ctx), 'Elite', potionOdds),
+    nextMonster: predictCombatRewards(cloneCtx(ctx), 'Monster'),
+    nextElite: predictCombatRewards(cloneCtx(ctx), 'Elite'),
   };
 }
 
 module.exports = {
   contextFromSave, cloneCtx, unlockedCards, potionOptions,
   createCardsForReward, createRandomPotions, rollRarity, predictCombatRewards,
+  pullRelicForReward, rollRelicRarity, generateShop,
   neowOptions, neowReport, rewardsReport, allowedAtNeow,
 };

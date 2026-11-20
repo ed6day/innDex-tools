@@ -200,7 +200,8 @@ class Rng {
   nextFloat(a = 1, b) {
     const [min, max] = b === undefined ? [0, a] : [a, b];
     this.counter++;
-    return Math.fround(this.random.nextDouble() * (Math.fround(max) - Math.fround(min)) + Math.fround(min));
+    // (max - min) is float arithmetic in C# before widening to double.
+    return Math.fround(this.random.nextDouble() * Math.fround(Math.fround(max) - Math.fround(min)) + Math.fround(min));
   }
 
   nextItem(items) {
