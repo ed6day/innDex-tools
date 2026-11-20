@@ -5,6 +5,7 @@ const {
   Rng, RunRngSet, PlayerRngSet, RUN_RNG_TYPES, PLAYER_RNG_TYPES, RNG_DESCRIPTIONS,
   snakeCase, xxHash64, parseJsonBigSafe,
 } = require('./rng');
+const { rewardsReport } = require('./rewards');
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
 
@@ -198,7 +199,13 @@ function saveReport(save) {
     },
     shuffleSeeds: upcomingShuffleSeeds(run.get('Shuffle'), 8),
     unknownRooms: predictUnknownRooms(run.get('UnknownMapPoint'), save.odds, 10),
+    rewards: safeRewards(save),
   };
+}
+
+// Card/potion forecasts need the exported game data; never let them break the RNG report.
+function safeRewards(save) {
+  try { return rewardsReport(save); } catch (err) { return { error: err.message }; }
 }
 
 function cardView(c) {

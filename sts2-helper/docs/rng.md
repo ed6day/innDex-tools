@@ -62,6 +62,29 @@ Player streams are seeded from `XxHash64(seed) + playerSlot` (slot 0 in single p
   (card id, upgrade, enchantment) and shuffles with the next `shuffle` value.
 - **Stream table.** How many numbers each stream has used and the next five values.
 
+## Rewards (lib/rewards.js)
+
+Card pools in game order, rarities and unlock epochs are exported from the game's own
+`ModelDb` into `lib/gamedata.json` (`cd tools/rng-harness && dotnet run -- data`). On top of that:
+
+- **Neow.** The event has its own RNG, `runSeed + XxHash64("NEOW")`. It picks 1 drawback relic,
+  then shuffles the positive pool (Lava Rock/Small Capsule, Oyster/Humidifier, Talisman/Pomander
+  coin flips added) and takes 2. Massive Scroll is multiplayer-only; Kaleidoscope needs every
+  character unlocked. Lost Coffer, Arcane Scroll, Phial Holster and Neow's Bones outcomes are
+  computed from the player streams.
+- **Fight rewards.** Rewards-stream order is potion-drop roll, gold (always one value), the
+  potion if one dropped, then each card's rarity roll, pick and upgrade roll. Fight rewards use
+  the pity offset saved as `card_rarity_odds_value`. Ascension 7+ ("Scarcity") lowers rare odds.
+- **Relic pulls** (Large Capsule, relic rewards) also use the Rewards stream: one NextFloat
+  for rarity (<0.5 common, <0.83 uncommon, else rare), then the front of that rarity's
+  pre-shuffled bag (`relic_grab_bag` in the save). Each Neow option therefore gets its own
+  "first fight if picked" forecast.
+- Verified in game (seed `NWN2GVX68PT5`): the Neow options, the Neow's Bones result including
+  the Large Capsule pulls (Vambrace, Tuning Fork), and the first two fights' card rewards.
+- Not modelled: relics that change reward options (Dingy Rug, Prismatic Gem, Scroll Boxes),
+  shops, transforms, and the random pickups of Lead Paperweight, Hefty Tablet, Silken Tress,
+  Small Capsule, Fishing Rod, Kaleidoscope, New Leaf, Leafy Poultice and Scroll Boxes.
+
 ## Why the save file matters
 
 `current_run.save` stores every stream's live state (`counter`, `s0..s3`) and the `?` odds.

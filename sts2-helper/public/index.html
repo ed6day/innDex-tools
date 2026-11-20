@@ -211,7 +211,7 @@
 
     /* ── Seed pane ── */
     #seedPane > div { flex: 1; padding: 14px; overflow-y: auto; display: grid; gap: 12px;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-content: start; }
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); grid-auto-rows: max-content; align-content: start; }
     #seedPane .wide { grid-column: 1 / -1; }
     .seed-pill {
       padding: 3px 10px; border-radius: 999px; font: 700 11px ui-monospace, Consolas, monospace;
@@ -232,6 +232,15 @@
     .room.Shop     { background: rgba(74,222,128,.15); color: var(--good); }
     .draw-order { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
     .draw-order .card-chip { font-size: 11px; padding: 3px 7px; }
+    .reward-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .reward-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; }
+    .reward-box h4 { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+    .reward-box .sub { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+    .rar { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px; margin-left: 4px; }
+    .rar.Common { background: rgba(90,99,128,.25); color: var(--muted); }
+    .rar.Uncommon { background: rgba(96,165,250,.15); color: var(--def); }
+    .rar.Rare { background: rgba(251,191,36,.15); color: var(--warn); }
+    .rlist { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 
     /* ── Empty state ── */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 6px; color: var(--muted); }
@@ -379,6 +388,11 @@
         <div class="panel">
           <div class="ph">Upcoming &ldquo;?&rdquo; rooms</div>
           <div class="pb" id="unknownPanel"><div class="empty" style="height:80px;"><div>Enter a seed</div></div></div>
+        </div>
+
+        <div class="panel wide">
+          <div class="ph">Rewards <span class="ph-right" style="color:var(--muted);">cards &amp; potions from the Rewards / NonCombatGeneration streams</span></div>
+          <div class="pb" id="rewardsPanel"><div class="empty" style="height:80px;"><div>Needs a run in progress</div></div></div>
         </div>
 
         <div class="panel wide">
@@ -746,6 +760,7 @@ function renderSeedReport(rep, mode) {
     `Streams never share numbers, so e.g. using a potion can't change your card rewards.`;
 
   renderOpening(rep, mode);
+  renderRewards(rep.rewards);
   renderUnknownRooms(rep.unknownRooms || []);
   renderStreams(rep.streams || [], rep.shuffleSeeds || []);
 }
@@ -772,6 +787,66 @@ function renderOpening(rep, mode) {
      <div class="note">Exact when the save was written on entering this room (the game saves <i>before</i> setting up combat).
        Changes if the deck changes first, or if relics/powers draw extra cards or reorder the pile.
        Each reshuffle in a fight uses the next value of the Shuffle stream, so fights shift the next fight's hand.</div>`;
+}
+
+function pretty(id) {
+  return String(id || '').replace(/^[A-Z_]+\./, '').split('_')
+    .map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+}
+
+function cardLine(c) {
+  return `<div>${esc(pretty(c.id))}${c.upgraded ? '+' : ''}<span class="rar ${c.rarity}">${c.rarity}</span></div>`;
+}
+
+function potionLine(p) {
+  return p ? `<div>&#9883; ${esc(pretty(p.id))}${p.rarity ? `<span class="rar ${p.rarity}">${p.rarity}</span>` : ''}</div>` : '';
+}
+
+function neowOutcome(o) {
+  if (!o) return '<div class="sub">Pickup isn\'t random (or not modelled yet)</div>';
+  let h = '';
+  if (o.cardChoice) h += '<div class="sub">Choose 1 of</div>' + o.cardChoice.map(cardLine).join('');
+  if (o.cards) h += '<div class="sub">Adds to deck</div>' + o.cards.map(cardLine).join('');
+  if (o.relics) h += '<div class="sub">Relics</div>' + o.relics.map(r => `<div>${esc(pretty(r))}</div>`).join('');
+  if (o.extraCards && o.extraCards.length) h += '<div class="sub" style="margin-top:4px;">Cards added</div>' + o.extraCards.map(c => `<div>${esc(pretty(c))}</div>`).join('');
+  if (o.curses) h += '<div class="sub" style="margin-top:4px;">Curse</div>' + o.curses.map(c => `<div style="color:var(--bad)">${esc(pretty(c))}</div>`).join('');
+  if (o.potionSlots) h += `<div class="sub">+${o.potionSlots} potion slot</div>`;
+  if (o.potions) h += '<div class="sub" style="margin-top:4px;">Potion' + (o.potions.length > 1 ? 's' : '') + '</div>' + o.potions.map(potionLine).join('');
+  if (o.note) h += `<div class="note">${esc(o.note)}</div>`;
+  return h;
+}
+
+function firstFightLine(f) {
+  if (!f) return '<div class="note">First fight: depends on an unmodelled pickup</div>';
+  return `<div class="sub" style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px;">First fight if picked</div>
+    ${f.cards.map(cardLine).join('')}
+    <div class="sub">Potion: ${f.potionDropped ? esc(pretty(f.potion.id)) : 'none'}</div>`;
+}
+
+function fightRewards(title, f) {
+  return `<div class="reward-box"><h4>${title}</h4>
+    <div class="sub">Card choice</div><div class="rlist">${f.cards.map(cardLine).join('')}</div>
+    <div class="sub" style="margin-top:6px;">Potion drop: ${f.potionDropped ? 'yes' : 'no'}
+      (roll ${f.potionRoll.toFixed(3)} vs ${(f.potionChance * 100).toFixed(1)}%)</div>
+    ${f.potionDropped ? `<div class="rlist">${potionLine(f.potion)}</div>` : ''}
+  </div>`;
+}
+
+function renderRewards(r) {
+  const panel = document.getElementById('rewardsPanel');
+  if (!r) { panel.innerHTML = '<div class="empty" style="height:80px;"><div>Needs a run in progress (save file)</div></div>'; return; }
+  if (r.error) { panel.innerHTML = `<div class="note" style="color:var(--bad)">${esc(r.error)}</div>`; return; }
+  let html = '';
+  if (r.neow) {
+    html += `<div class="sec-hdr" style="margin-top:0;">Neow &mdash; what each option gives</div>
+      <div class="reward-grid">${r.neow.map(o => `<div class="reward-box"><h4>${esc(pretty(o.relic))}</h4><div class="rlist">${neowOutcome(o.outcome)}${firstFightLine(o.firstFight)}</div></div>`).join('')}</div>`;
+  }
+  html += `<div class="sec-hdr"${r.neow ? '' : ' style="margin-top:0;"'}>Next fight rewards (if nothing else uses the Rewards stream first)</div>
+    <div class="reward-grid">${fightRewards('Normal fight', r.nextMonster)}${fightRewards('Elite fight', r.nextElite)}</div>
+    <div class="note">Card rewards, potion drops, gold and Lost Coffer-style rewards all share the Rewards stream, so
+      picking a reward-giving option shifts the next fight's cards. The dashboard recalculates on every save.
+      Not modelled yet: relics that change reward options (Dingy Rug, Prismatic Gem, Scroll Boxes), shops, card transforms.</div>`;
+  panel.innerHTML = html;
 }
 
 function renderUnknownRooms(rows) {
