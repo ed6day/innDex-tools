@@ -28,7 +28,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <!-- RitsuLib: lifecycle hooks, logging, patching framework -->
-    <PackageReference Include="STS2.RitsuLib" Version="0.3.0" />
+    <PackageReference Include="STS2.RitsuLib" Version="0.6.15" />
   </ItemGroup>
 
   <!-- Game DLL references — resolved from the STS2 installation -->

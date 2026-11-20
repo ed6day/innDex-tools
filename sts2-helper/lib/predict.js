@@ -8,7 +8,7 @@ const {
 
 // ── Card helpers ──────────────────────────────────────────────────────────────
 
-// Card classes with CardKeyword.Innate, from the decompiled models (v0.107).
+// Card classes with CardKeyword.Innate, from the decompiled models (v0.113.1).
 // BASE = always innate; UPGRADED = gains Innate via AddKeyword in OnUpgrade.
 const INNATE_BASE = new Set([
   'APOTHEOSIS', 'ASSASSINATE', 'BACKSTAB', 'BOOT_SEQUENCE', 'DRAMATIC_ENTRANCE', 'FOLLY',

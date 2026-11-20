@@ -1,6 +1,6 @@
 # How Slay the Spire 2 randomness works
 
-Reverse-engineered from the game's own `sts2.dll` (build v0.107.1, decompiled with ILSpy).
+Reverse-engineered from the game's own `sts2.dll` (build v0.113.1, decompiled with ILSpy).
 `lib/rng.js` is a bit-exact JavaScript port; `test/rng.test.js` checks it against values
 produced by the game's own classes (see "Re-validating after a game patch").
 

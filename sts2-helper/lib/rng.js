@@ -1,6 +1,6 @@
 // Bit-exact port of Slay the Spire 2's seeded RNG (MegaCrit.Sts2.Core.Random).
 //
-// Pipeline, as decompiled from sts2.dll (v0.107):
+// Pipeline, as decompiled from sts2.dll (v0.113.1):
 //   seed string ("0K789M7XN0")  --XxHash64(utf8, seed 0)-->  run seed (u64)
 //   each RunRngType stream:      new Rng(runSeed + XxHash64(snake_case(name)))
 //   each PlayerRngType stream:   new Rng(playerSeed + XxHash64(snake_case(name)))
