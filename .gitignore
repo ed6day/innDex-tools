@@ -12,3 +12,6 @@ sts2-helper/mod/bin/
 sts2-helper/mod/obj/
 sts2-helper/sts2-helper.db
 sts2-helper/.claude/settings.local.json
+sts2-helper/tools/rng-harness/out/
+sts2-helper/tools/rng-harness/obj/
+sts2-helper/tools/rng-harness/bin/

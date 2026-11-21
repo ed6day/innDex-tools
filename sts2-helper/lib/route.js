@@ -1,8 +1,8 @@
-// Act map + route simulation. Walks a planned path node by node and consumes each RNG
+// Act maps + route simulation. Walks planned paths node by node and consumes each RNG
 // stream the way the game does (RunManager.RollRoomTypeFor / CreateRoom, RoomSet,
-// RewardsSet, MerchantInventory, TreasureRoom), so every forecast along the path
-// accounts for everything before it.
-const { RunRngSet, Rng, parseJsonBigSafe } = require('./rng');
+// RewardsSet, MerchantInventory, TreasureRoom), so every forecast along the way
+// accounts for everything before it — across acts, too.
+const { RunRngSet, parseJsonBigSafe } = require('./rng');
 const { rollUnknownRoom, oddsFromSave } = require('./predict');
 const R = require('./rewards');
 const E = require('./events');
@@ -20,33 +20,51 @@ const REWARD_EVENTS = new Set(['BATTLEWORN_DUMMY', 'BRAIN_LEECH', 'COLORFUL_PHIL
 const MAP_TYPE_TO_ROOM = { monster: 'Monster', elite: 'Elite', boss: 'Boss', shop: 'Shop', treasure: 'Treasure',
   rest_site: 'RestSite', ancient: 'Event', unknown: null };
 
-// ── Map ───────────────────────────────────────────────────────────────────────
+// ── Maps ──────────────────────────────────────────────────────────────────────
+
+// savedMap: current_run.save's saved_map shape (the current act's, or a generated one).
+function buildMap(save, actIndex, savedMap) {
+  if (!savedMap) return null;
+  const nodes = {};
+  const all = [savedMap.start, ...savedMap.points, savedMap.boss, savedMap.second_boss].filter(Boolean);
+  for (const p of all) {
+    nodes[key(p.coord)] = { col: p.coord.col, row: p.coord.row, type: p.type, children: (p.children || []).map(key) };
+  }
+  // The second boss follows the first.
+  if (savedMap.second_boss) nodes[key(savedMap.boss.coord)].children = [key(savedMap.second_boss.coord)];
+  const isCurrent = actIndex === (save.current_act_index ?? 0);
+  const visited = isCurrent ? (save.visited_map_coords || []).map(key) : [];
+  const actHistory = (save.map_point_history || [])[actIndex] || [];
+  const maxRow = Math.max(...all.map(p => p.coord.row));
+  return {
+    act: actIndex, actId: save.acts[actIndex].id, width: savedMap.width, height: maxRow, nodes,
+    start: key(savedMap.start.coord), boss: key(savedMap.boss.coord), visited, isCurrent,
+    current: visited[visited.length - 1] || key(savedMap.start.coord),
+    // The save is written on entering a room, before it's resolved (no history entry yet).
+    currentPending: isCurrent && visited.length > actHistory.length,
+  };
+}
 
 function mapFromSave(save) {
   const act = save.current_act_index ?? 0;
-  const m = save.acts?.[act]?.saved_map;
-  if (!m) return null;
-  const nodes = {};
-  for (const p of [m.start, ...m.points, m.boss].filter(Boolean)) {
-    nodes[key(p.coord)] = { col: p.coord.col, row: p.coord.row, type: p.type, children: (p.children || []).map(key) };
-  }
-  const visited = (save.visited_map_coords || []).map(key);
-  const actHistory = (save.map_point_history || [])[act] || [];
-  return {
-    act, actId: save.acts[act].id, width: m.width, height: m.height, nodes,
-    start: key(m.start.coord), boss: key(m.boss.coord), visited,
-    current: visited[visited.length - 1] || key(m.start.coord),
-    // The save is written on entering a room, before it's resolved (no history entry yet).
-    currentPending: visited.length > actHistory.length,
-  };
+  return buildMap(save, act, save.acts?.[act]?.saved_map);
 }
 
 // ── Simulation state ──────────────────────────────────────────────────────────
 
+function roomsFor(save, actIndex) {
+  const rooms = save.acts[actIndex].rooms;
+  return {
+    normal: rooms.normal_encounter_ids, elite: rooms.elite_encounter_ids, events: rooms.event_ids,
+    boss: rooms.boss_id, secondBoss: rooms.second_boss_id || null,
+    normalVisited: rooms.normal_encounters_visited || 0, eliteVisited: rooms.elite_encounters_visited || 0,
+    eventsVisited: rooms.events_visited || 0, bossVisited: rooms.boss_encounters_visited || 0,
+  };
+}
+
 function stateFromSave(save) {
   const ctx = R.contextFromSave(save);
   const run = RunRngSet.fromSave(save.rng);
-  const rooms = save.acts[save.current_act_index ?? 0].rooms;
   const history = (save.map_point_history || []).flat();
   const shared = save.shared_relic_grab_bag?.relic_id_lists || {};
   return {
@@ -54,11 +72,7 @@ function stateFromSave(save) {
     unknownRng: run.get('UnknownMapPoint').clone(),
     treasureRng: run.get('TreasureRoomRelics').clone(),
     unknownOdds: oddsFromSave(save.odds),
-    rooms: {
-      normal: rooms.normal_encounter_ids, elite: rooms.elite_encounter_ids, events: rooms.event_ids,
-      boss: rooms.boss_id, normalVisited: rooms.normal_encounters_visited || 0,
-      eliteVisited: rooms.elite_encounters_visited || 0, eventsVisited: rooms.events_visited || 0,
-    },
+    rooms: roomsFor(save, save.current_act_index ?? 0),
     seenEvents: new Set(save.events_seen || []),
     // Eligibility uses the state as of now; gold/HP along the route aren't simulated.
     evState: E.eventState(save),
@@ -67,6 +81,13 @@ function stateFromSave(save) {
     removalsUsed: save.players[0].extra_fields?.card_shop_removals_used ?? 0,
     fightIndex: 0, shopIndex: 0, uncertainFrom: null,
   };
+}
+
+// Entering a new act: its own room lists; RNG streams and odds carry over.
+function enterAct(st, save, actIndex) {
+  st.rooms = roomsFor(save, actIndex);
+  st.evState = { ...st.evState, act: actIndex };
+  st.lastWasShop = false;
 }
 
 // RoomSet.EnsureNextEventIsValid + NextEvent: skip events already seen or not allowed
@@ -88,9 +109,13 @@ function fight(st, roomType) {
   let encounter;
   if (roomType === 'Monster') encounter = st.rooms.normal[st.rooms.normalVisited++ % st.rooms.normal.length];
   else if (roomType === 'Elite') encounter = st.rooms.elite[st.rooms.eliteVisited++ % st.rooms.elite.length];
-  else encounter = st.rooms.boss;
+  else encounter = st.rooms.bossVisited++ > 0 && st.rooms.secondBoss ? st.rooms.secondBoss : st.rooms.boss;
   const rewards = R.predictCombatRewards(st.ctx, roomType);
-  return { encounter, rewards, fightIndex: ++st.fightIndex };
+  // Gremlins' Heist steals gold; winning adds a GoldReward that draws from Rewards after the
+  // cards, so fights after this one shift by one draw if they steal.
+  const stealsGold = /GREMLIN/.test(encounter || '');
+  if (stealsGold && st.uncertainFrom == null) st.uncertainFrom = 'gold thief';
+  return { encounter, rewards, fightIndex: ++st.fightIndex, stealsGold };
 }
 
 // TreasureRoom: gold is one Rewards NextInt; the chest relic uses the TreasureRoomRelics
@@ -103,7 +128,7 @@ function treasure(st) {
   return { relic: rarity ? st.sharedBag[rarity].shift() : null };
 }
 
-// Resolve one map node. `nextChildren` are the node's children (shop blacklist rule).
+// Resolve one map node. `nextTypes` are the node's children's types (shop blacklist rule).
 function visit(st, node, nextTypes) {
   let roomType = MAP_TYPE_TO_ROOM[node.type];
   const step = { node: key(node), mapType: node.type };
@@ -116,7 +141,12 @@ function visit(st, node, nextTypes) {
   step.roomType = roomType;
   if (roomType === 'Monster' || roomType === 'Elite' || roomType === 'Boss') {
     Object.assign(step, fight(st, roomType));
-  } else if (roomType === 'Event' && node.type !== 'ancient') {
+  } else if (node.type === 'ancient') {
+    // The act's Ancient counts as a visited event; its offers aren't modelled (except Neow).
+    st.rooms.eventsVisited++;
+    step.ancient = true;
+    if (st.uncertainFrom == null) { st.uncertainFrom = step.node; step.mayShiftRewards = true; }
+  } else if (roomType === 'Event') {
     step.event = pullEvent(st);
     step.eventForecast = E.forecastEvent(step.event, st.ctx, st.evState);
     step.eventNeeds = E.needs(step.event);
@@ -136,15 +166,10 @@ function visit(st, node, nextTypes) {
   return step;
 }
 
-// Simulate a path: array of node keys after the current node (must follow map edges).
-function simulateRoute(save, path = []) {
-  if (typeof save === 'string') save = parseJsonBigSafe(save);
-  const map = mapFromSave(save);
-  if (!map) return null;
-  const st = stateFromSave(save);
-  const order = [];
-  if (map.currentPending && map.current !== map.start) order.push(map.current);
-  let prev = map.current;
+// Walk `path` (node keys after `from`, following edges) on `map`.
+function walk(st, map, from, path, includeFrom) {
+  const order = includeFrom ? [from] : [];
+  let prev = from;
   for (const k of path) {
     if (!map.nodes[prev]?.children.includes(k)) break; // ignore anything off the map's edges
     order.push(k);
@@ -154,28 +179,67 @@ function simulateRoute(save, path = []) {
     const node = map.nodes[k];
     return visit(st, node, node.children.map(c => map.nodes[c]?.type));
   });
-  return { map, steps, includesCurrent: map.currentPending && map.current !== map.start };
+  return { steps, reachedBoss: prev === map.boss || map.nodes[prev]?.type === 'boss' };
 }
 
-// Path-independent lookahead: what the next fights / events / shops are in order.
-function lookahead(save, count = 8) {
+// Simulate planned routes. routes: { [actIndex]: [node keys] } (current act: nodes after the
+// current one; later acts: nodes after the act's start). maps: { [actIndex]: saved_map shape }
+// for acts after the current one (from lib/mapgen). Returns one entry per simulated act.
+function simulateRoutes(save, routes = {}, maps = {}) {
+  if (typeof save === 'string') save = parseJsonBigSafe(save);
+  const cur = save.current_act_index ?? 0;
+  const st = stateFromSave(save);
+  const acts = [];
+  for (let a = cur; a < save.acts.length; a++) {
+    const map = a === cur ? mapFromSave(save) : buildMap(save, a, maps[a]);
+    if (!map) break;
+    if (a > cur) {
+      enterAct(st, save, a);
+      // Anything not planned in the previous act makes this act's numbers approximate.
+      if (!acts[acts.length - 1]?.reachedBoss && st.uncertainFrom == null) st.uncertainFrom = 'previous act';
+    }
+    const includeFrom = a === cur ? (map.currentPending && map.current !== map.start) : true;
+    const res = walk(st, map, map.current, routes[a] || [], includeFrom);
+    acts.push({ act: a, map, ...res, includesCurrent: a === cur && includeFrom });
+    if (a > cur && !(routes[a] || []).length) break;
+  }
+  return { acts };
+}
+
+// Single-act convenience (current act only).
+function simulateRoute(save, path = []) {
+  if (typeof save === 'string') save = parseJsonBigSafe(save);
+  const r = simulateRoutes(save, { [save.current_act_index ?? 0]: path });
+  const a = r.acts[0];
+  return a ? { map: a.map, steps: a.steps, includesCurrent: a.includesCurrent } : null;
+}
+
+// Path-independent lookahead for an act: fights / events / shops in order.
+function lookahead(save, count = 8, actIndex = save.current_act_index ?? 0) {
   if (typeof save === 'string') save = parseJsonBigSafe(save);
   const st = stateFromSave(save);
+  const cur = save.current_act_index ?? 0;
+  if (actIndex !== cur) {
+    enterAct(st, save, actIndex);
+    st.rooms.eventsVisited++; // the act's Ancient
+  }
   const r = st.rooms;
   const take = (list, from, n) => Array.from({ length: Math.min(n, list.length) }, (_, i) => list[(from + i) % list.length]);
   const events = [];
   const probe = { ...st, rooms: { ...r }, seenEvents: new Set(st.seenEvents) };
   for (let i = 0; i < Math.min(count, r.events.length); i++) events.push(pullEvent(probe));
   const forecasts = events.map(id => E.forecastEvent(id, st.ctx, st.evState));
-  // If every upcoming fight were a normal fight: the n-th card reward.
+  // If every upcoming fight were a normal fight: the n-th card reward (current act only).
   const ctx = R.cloneCtx(st.ctx);
-  const fights = Array.from({ length: count }, () => R.predictCombatRewards(ctx, 'Monster'));
+  const fights = actIndex === cur ? Array.from({ length: count }, () => R.predictCombatRewards(ctx, 'Monster')) : [];
   const shopCtx = R.cloneCtx(st.ctx);
-  const shops = Array.from({ length: 3 }, () => R.generateShop(shopCtx, st.removalsUsed));
+  const shops = actIndex === cur ? Array.from({ length: 3 }, () => R.generateShop(shopCtx, st.removalsUsed)) : [];
   return {
+    act: actIndex, isCurrent: actIndex === cur,
+    ancient: save.acts[actIndex].rooms.ancient_id,
     normals: take(r.normal, r.normalVisited, count),
     elites: take(r.elite, r.eliteVisited, Math.min(count, 4)),
-    boss: r.boss,
+    boss: r.boss, secondBoss: r.secondBoss,
     events: events.map((id, i) => ({
       id, mayShiftRewards: REWARD_EVENTS.has(id.replace(/^EVENT\./, '')), needs: E.needs(id), forecast: forecasts[i],
     })),
@@ -184,4 +248,4 @@ function lookahead(save, count = 8) {
   };
 }
 
-module.exports = { mapFromSave, simulateRoute, lookahead, REWARD_EVENTS };
+module.exports = { mapFromSave, buildMap, simulateRoute, simulateRoutes, lookahead, REWARD_EVENTS };

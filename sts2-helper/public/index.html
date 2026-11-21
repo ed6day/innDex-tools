@@ -245,6 +245,11 @@
     /* ── Map pane ── */
     #mapPane > div { flex: 1; display: grid; grid-template-columns: minmax(380px, 460px) 1fr; gap: 12px; padding: 12px; overflow: hidden; }
     #mapPane .col { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    #mapPane .col > .panel { flex: none; overflow: visible; }
+    #mapPane .col > .panel > .pb { overflow: visible; flex: none; }
+    .actbtn { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2); color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer; }
+    .actbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .step.boss { border-color: rgba(248,113,113,.5); }
     #mapSvg { display: block; margin: 0 auto; }
     #mapSvg .edge { stroke: var(--border); stroke-width: 2; }
     #mapSvg .edge.walked { stroke: var(--muted); }
@@ -402,6 +407,7 @@
           <div class="panel">
             <div class="ph">Act map <span class="ph-right" id="mapMeta" style="color:var(--muted);"></span></div>
             <div class="pb">
+              <div id="actBtns" style="display:flex;gap:6px;margin-bottom:8px;"></div>
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
                 <button class="btn btn-g" onclick="setRoute([])">Clear route</button>
                 <span class="note" style="margin:0;">Click a dashed node to extend your route; click a route node to cut it back.</span>
@@ -923,7 +929,7 @@ function renderRewards(r) {
       <div class="reward-grid">${r.neow.map(o => `<div class="reward-box"><h4>${esc(pretty(o.relic))}</h4><div class="rlist">${neowOutcome(o.outcome, o.effect)}${firstFightLine(o.firstFight)}</div></div>`).join('')}</div>`;
   }
   html += `<div class="sec-hdr"${r.neow ? '' : ' style="margin-top:0;"'}>Next fight rewards (if nothing else uses the Rewards stream first)</div>
-    <div class="reward-grid">${fightRewards('Normal fight', r.nextMonster)}${fightRewards('Elite fight', r.nextElite)}</div>
+    <div class="reward-grid">${fightRewards('Normal fight', r.nextMonster)}${fightRewards('Elite fight', r.nextElite)}${r.nextBoss ? fightRewards('Boss fight (all rares)', r.nextBoss) : ''}</div>
     <div class="note">Card rewards, potion drops, gold and Lost Coffer-style rewards all share the Rewards stream, so
       picking a reward-giving option shifts the next fight's cards. The dashboard recalculates on every save.
       Not modelled yet: relics that change reward options (Dingy Rug, Prismatic Gem, Scroll Boxes), shops, card transforms.</div>`;
@@ -962,25 +968,34 @@ function renderStreams(streams, shuffleSeeds) {
 
 // ── Map & route ────────────────────────────────────────────────────────────────
 
-let mapData = null, route = [];
+let mapData = null, route = [], viewAct = null;
 const GLYPH = { monster: '\u2694', elite: '\u2620', boss: 'B', unknown: '?', shop: '$', treasure: '\u25C6', rest_site: '\u2668', ancient: 'N' };
-const routeKey = () => mapData ? `sts2-route-${mapData.seed}-${mapData.map.act}` : '';
+const routeKey = act => mapData ? `sts2-route-${mapData.seed}-${act}` : '';
+const loadStored = act => { try { return JSON.parse(localStorage.getItem(routeKey(act)) || '[]'); } catch { return []; } };
 
-async function loadMap() {
-  const r = await fetch('/api/map');
+async function loadMap(act) {
+  const q = act == null ? (viewAct != null ? `?act=${viewAct}` : '') : `?act=${act}`;
+  document.getElementById('mapMeta').textContent = 'Loading\u2026';
+  const r = await fetch('/api/map' + q);
   if (!r.ok) {
     document.getElementById('mapMeta').textContent = 'No run in progress';
     return;
   }
   mapData = await r.json();
-  try { route = JSON.parse(localStorage.getItem(routeKey()) || '[]'); } catch { route = []; }
-  route = validRoute(route);
+  viewAct = mapData.map.act;
+  route = validRoute(loadStored(viewAct));
+  drawActButtons();
   drawMap();
   renderLookahead(mapData.lookahead);
   loadRoute();
 }
 
-// Keep only the part of a saved route that still follows edges from the current node.
+function drawActButtons() {
+  document.getElementById('actBtns').innerHTML = mapData.acts.filter(a => a.index >= mapData.currentAct).map(a =>
+    `<button class="actbtn${a.index === viewAct ? ' on' : ''}" onclick="loadMap(${a.index})">Act ${a.index + 1}: ${esc(pretty(a.id))}${a.index === mapData.currentAct ? ' (now)' : ''}</button>`).join('');
+}
+
+// Keep only the part of a saved route that still follows edges from the starting node.
 function validRoute(r) {
   const m = mapData.map;
   const out = [];
@@ -994,7 +1009,7 @@ function validRoute(r) {
 
 function setRoute(r) {
   route = r;
-  try { localStorage.setItem(routeKey(), JSON.stringify(route)); } catch {}
+  try { localStorage.setItem(routeKey(viewAct), JSON.stringify(route)); } catch {}
   drawMap();
   loadRoute();
 }
@@ -1029,7 +1044,7 @@ function drawMap() {
   }
   for (const [k, n] of Object.entries(m.nodes)) {
     const [x, y] = pos(n);
-    const cls = ['node', walked.has(k) ? 'visited' : '', k === m.current ? 'current' : '',
+    const cls = ['node', walked.has(k) ? 'visited' : '', k === m.current && m.isCurrent ? 'current' : '',
       onRoute.has(k) ? 'route onroute' : '', nextSet.has(k) ? 'next' : ''].join(' ');
     const r = n.type === 'boss' ? 18 : 14;
     nodes += `<g class="${cls}" data-k="${k}"><title>${n.type.replace('_', ' ')} (${k})</title>
@@ -1037,13 +1052,19 @@ function drawMap() {
   }
   svg.innerHTML = edges + nodes;
   svg.querySelectorAll('.node.next, .node.onroute').forEach(g => g.addEventListener('click', () => clickNode(g.dataset.k)));
-  document.getElementById('mapMeta').textContent = `${pretty(m.actId)} \u00B7 seed ${mapData.seed}`;
+  document.getElementById('mapMeta').textContent = `${pretty(m.actId)} \u00B7 seed ${mapData.seed}` + (m.isCurrent ? '' : ' \u00B7 generated from the seed');
 }
 
 async function loadRoute() {
-  const r = await fetch('/api/route?path=' + encodeURIComponent(route.join(';')));
+  // Send every act's route from the current act up to the one shown, so RNG state carries over.
+  const routes = {};
+  for (let a = mapData.currentAct; a <= viewAct; a++) routes[a] = a === viewAct ? route : loadStored(a);
+  const r = await fetch('/api/route?routes=' + encodeURIComponent(JSON.stringify(routes)));
   if (!r.ok) return;
-  renderRoute(await r.json());
+  const res = await r.json();
+  const actRes = res.acts.find(a => a.act === viewAct);
+  const gap = res.acts.filter(a => a.act < viewAct).some(a => !a.reachedBoss);
+  renderRoute(actRes, gap);
 }
 
 function rewardsBlock(rw) {
@@ -1081,16 +1102,17 @@ function eventForecastHtml(f) {
   }).join('');
 }
 
-function renderRoute(res) {
+function renderRoute(res, gap) {
   const panel = document.getElementById('routePanel');
+  const gapNote = gap ? '<div class="flag" style="margin-bottom:8px;">An earlier act\'s route doesn\'t reach its boss yet, so these numbers assume nothing else happens before this act. Plan earlier acts to the boss for exact numbers.</div>' : '';
   if (!res || !res.steps.length) {
-    panel.innerHTML = '<div class="empty" style="height:80px;"><div>Click a dashed node on the map to start your route</div></div>';
+    panel.innerHTML = gapNote + '<div class="empty" style="height:80px;"><div>Click a dashed node on the map to start your route</div></div>';
     document.getElementById('routeMeta').textContent = '';
     return;
   }
   document.getElementById('routeMeta').textContent = `${res.steps.length} rooms` + (res.includesCurrent ? ' (incl. current)' : '');
-  panel.innerHTML = res.steps.map((st, i) => {
-    const title = st.encounter ? prettyEnc(st.encounter) : st.event ? pretty(st.event) : st.roomType === 'RestSite' ? 'Rest site'
+  panel.innerHTML = gapNote + res.steps.map((st, i) => {
+    const title = st.ancient ? 'Ancient (act start)' : st.encounter ? (st.roomType === 'Boss' ? 'BOSS: ' : '') + prettyEnc(st.encounter) : st.event ? pretty(st.event) : st.roomType === 'RestSite' ? 'Rest site'
       : st.roomType === 'Treasure' ? 'Treasure' : st.roomType === 'Shop' ? `Shop #${st.shopIndex}` : st.roomType;
     const via = st.mapType === 'unknown' ? ` <span class="sub" style="display:inline">(? \u2192 ${st.roomType}, roll ${st.unknownRoll.toFixed(3)})</span>` : '';
     let body = '';
@@ -1099,9 +1121,11 @@ function renderRoute(res) {
     if (st.shop) body += shopBlock(st.shop);
     if (st.event) body += (st.eventNeeds ? `<div class="eff">Appears only with ${esc(st.eventNeeds)} (judged on your current state)</div>` : '') + eventForecastHtml(st.eventForecast);
     if (st.mayShiftRewards) body += '<div class="flag">Forecasts after this event depend on the option you pick.</div>';
+    if (st.stealsGold) body += '<div class="flag">Can steal gold: if it does, getting it back adds a gold reward that shifts later fights by one draw.</div>';
     if (st.uncertain) body += '<div class="flag">Assumes the earlier event didn\'t use the Rewards stream.</div>';
     const n = st.fightIndex ? `fight ${st.fightIndex}` : '';
-    return `<div class="step${st.uncertain ? ' uncertain' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
+    if (st.ancient) body += '<div class="eff">The Ancient\'s offers aren\'t modelled yet; picks that give cards, potions or relics shift later forecasts.</div>';
+    return `<div class="step${st.uncertain ? ' uncertain' : ''}${st.roomType === 'Boss' ? ' boss' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
   }).join('<div style="height:6px"></div>');
 }
 
@@ -1111,14 +1135,16 @@ function renderLookahead(L) {
     <div class="two">
       <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li>${esc(prettyEnc(e))}</li>`)}
         <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)">${esc(prettyEnc(e))}</li>`)}
-        <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}</div></div>
+        <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}${L.secondBoss ? ` then ${esc(prettyEnc(L.secondBoss))}` : ''}</div>
+        ${L.isCurrent ? '' : `<div class="sec-hdr">Ancient at the start</div><div style="font-size:12px;">${esc(pretty(L.ancient))}</div>`}</div>
       <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li><details class="ev"><summary>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}${e.needs ? ` <span class="eff">(${esc(e.needs)})</span>` : ''}</summary>${eventForecastHtml(e.forecast)}</details></li>`)}
         <div class="note"><span style="color:var(--warn)">\u2022</span> can hand out rewards (shifts later card forecasts)</div></div>
     </div>
-    <div class="sec-hdr">Card rewards if your next fights are all normal fights</div>
-    ${list(L.normalFightRewards, (f, i) => `<li>${f.cards.map(c => `${esc(pretty(c.id))}<span class="rar ${c.rarity}">${c.rarity[0]}</span>`).join(', ')}${f.potionDropped ? ` + ${esc(pretty(f.potion.id))}` : ''}</li>`)}
-    <div class="sec-hdr">Next shops (n-th shop you enter)</div>
-    ${L.shops.map((sh, i) => `<div class="step" style="margin-bottom:6px;"><h4>Shop #${i + 1}</h4>${shopBlock(sh)}</div>`).join('')}
+    ${L.isCurrent ? '' : '<div class="note">Card rewards and shops for this act depend on what you do before it: plan a route through each act (ending at the boss) to see them.</div>'}
+    ${L.isCurrent ? `<div class="sec-hdr">Card rewards if your next fights are all normal fights</div>
+${list(L.normalFightRewards, (f, i) => `<li>${f.cards.map(c => `${esc(pretty(c.id))}<span class="rar ${c.rarity}">${c.rarity[0]}</span>`).join(', ')}${f.potionDropped ? ` + ${esc(pretty(f.potion.id))}` : ''}</li>`)}
+<div class="sec-hdr">Next shops (n-th shop you enter)</div>
+    ${L.shops.map((sh, i) => `<div class="step" style="margin-bottom:6px;"><h4>Shop #${i + 1}</h4>${shopBlock(sh)}</div>`).join('')}` : ''}
     <div class="note">Fights, events and shops each come from their own fixed list or stream, so the n-th one is known
       regardless of path. Card rewards depend on which rooms you go through (elites, treasure, relic pulls);
       plan a route on the map for exact numbers. Shop card rarities shift slightly with your card-reward luck.</div>`;

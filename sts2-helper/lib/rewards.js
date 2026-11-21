@@ -426,6 +426,7 @@ function rewardsReport(save) {
     neow: history.length === 0 && ctx.actIndex === 0 ? neowReport(save) : null,
     nextMonster: predictCombatRewards(cloneCtx(ctx), 'Monster'),
     nextElite: predictCombatRewards(cloneCtx(ctx), 'Elite'),
+    nextBoss: predictCombatRewards(cloneCtx(ctx), 'Boss'),
   };
 }
 

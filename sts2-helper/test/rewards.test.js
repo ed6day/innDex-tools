@@ -92,6 +92,25 @@ test('replays a real Neow + first fight from the game', () => {
   assert.equal(bones.firstFight.potionDropped, false);
 });
 
+// Observed in game on 2026-11-20 (seed 2HZ7UB0D8KD2, act 1 boss The Kin): the pre-boss save had
+// Rewards at draw 110, card odds 0.069999985, potion odds 0.6; the game offered Nightmare,
+// Storm of Steel and Serpent Form plus a potion.
+test('replays a real boss reward from the game', () => {
+  const { PlayerRngSet } = require('../lib/rng');
+  const seed = '2HZ7UB0D8KD2';
+  const rewards = PlayerRngSet.forSeed(seed, 0).get('Rewards');
+  for (let i = 0; i < 110; i++) rewards.nextUnsignedLong();
+  const ctx = contextFromSave(saveText());
+  ctx.rngs.Rewards = rewards;
+  ctx.cardRarityOffset = Math.fround(0.069999985);
+  ctx.potionOddsValue = Math.fround(0.6);
+  const { predictCombatRewards } = require('../lib/rewards');
+  const boss = predictCombatRewards(ctx, 'Boss');
+  assert.deepEqual(boss.cards.map(c => c.id).sort(), ['CARD.NIGHTMARE', 'CARD.SERPENT_FORM', 'CARD.STORM_OF_STEEL']);
+  assert.ok(boss.cards.every(c => c.rarity === 'Rare'));
+  assert.equal(boss.potionDropped, true);
+});
+
 test('rewardsReport includes Neow before it is resolved', () => {
   const r = rewardsReport(saveText());
   assert.equal(r.neow.length, 3);

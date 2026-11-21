@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Runs;
 // Dumps test vectors from the game's own RNG classes so the JS port can be checked bit-for-bit.
 // `dotnet run -- data` exports card/potion pool data instead (see DataExport.cs).
 if (args.Length > 0 && args[0] == "data") { DataExport.Run(); return; }
+// `dotnet run -- map <seed> <actIndex> <actId> <ascension> <players> <secondBoss>`: see MapExport.cs.
+if (args.Length > 0 && args[0] == "map") { MapExport.Run(args); return; }
 var seeds = new[] { "0K789M7XN0", "ABC123DEF456", "Z", "", "THIS_SEED_IS_LONGER_THAN_32_BYTES_XYZ", "old1234" };
 var outSeeds = new List<object>();
 foreach (var seed in seeds)

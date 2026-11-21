@@ -110,6 +110,20 @@ Verified in game (seed `2HZ7UB0D8KD2`): the Hefty Tablet choices, the first figh
 potion after Hefty Tablet, the Fuzzy Wurm Crawler fight's cards, and the first `?` event.
 Not yet verified: shop stock.
 
+### Future acts
+
+Later acts' maps aren't in the save until you arrive, but they're deterministic:
+`StandardActMap.CreateFor` uses `Rng(runSeed, "act_{n}_map")`. The game's own generator is
+run headless (`tools/rng-harness`, `map` mode, built on demand by `lib/mapgen.js`). The elite
+count from Ascension 1+ ("Swarming Elites": round(5 × 1.6) = 8) is applied by hand. The act 2
+map generated this way matched the game's map exactly (59/59 nodes). Routes chain across acts:
+the RNG state at the end of one act's planned route (to the boss) starts the next. Act 3 has a
+second boss at Ascension 10.
+
+Boss fights give 3 rares (pity offset 0, resets afterwards). Verified: the act 1 boss reward
+on seed `2HZ7UB0D8KD2` (Nightmare, Storm of Steel, Serpent Form, plus a potion). Gremlin fights
+can steal gold; winning it back adds a gold reward that shifts later fights by one Rewards draw.
+
 ## Events (lib/events.js)
 
 Each event gets its own RNG, `runSeed + playerSlot + XxHash64(event id)`, created when you
