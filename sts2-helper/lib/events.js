@@ -15,6 +15,12 @@ for (const [pool, cards] of Object.entries(DATA.cardPools)) {
   for (const c of cards) if (!CARD_INFO[c.id]) CARD_INFO[c.id] = { ...c, pool };
 }
 const info = id => CARD_INFO[id] || { id, rarity: 'Common', removable: true, transformable: true, upgradable: true };
+const tradable = id => DATA.relics?.[id]?.tradable ?? false;
+
+// Character card pools you've unlocked (UnlockState.CharacterCardPools).
+const CHARACTER_UNLOCK = { IRONCLAD_CARD_POOL: null, SILENT_CARD_POOL: 'SILENT1_EPOCH', REGENT_CARD_POOL: 'REGENT1_EPOCH',
+  NECROBINDER_CARD_POOL: 'NECROBINDER1_EPOCH', DEFECT_CARD_POOL: 'DEFECT1_EPOCH', FOOL_CARD_POOL: 'FOOL1_EPOCH' };
+const unlockedCharacterPools = epochs => Object.entries(CHARACTER_UNLOCK).filter(([, e]) => !e || epochs.has(e)).map(([p]) => p);
 
 // CardFactory.GetDefaultTransformationOptions + GetFilteredTransformationOptions.
 function transformOptions(ctx, cardId) {
@@ -57,8 +63,9 @@ const RULES = {
   MUSEUM_OF_TORTURE: { ok: st => st.act === 1 },
   POTION_COURIER: { ok: st => st.act > 0 },
   PUNCH_OFF: { ok: st => st.totalFloor >= 6 },
-  RANWID_THE_ELDER: { ok: st => st.act > 0 && st.gold >= 100 && st.potions.length > 0, needs: '100+ gold, a potion' },
-  RELIC_TRADER: { ok: st => st.act > 0, needs: '5+ tradeable relics' },
+  RANWID_THE_ELDER: { ok: st => st.act > 0 && st.gold >= 100 && st.potions.length > 0 && st.relics.some(tradable), needs: '100+ gold, a potion' },
+  RELIC_TRADER: { ok: st => st.act > 0 && st.relics.filter(tradable).length >= 5, needs: '5+ tradable relics' },
+  COLORFUL_PHILOSOPHERS: { ok: st => unlockedCharacterPools(st.epochs).filter(p => p !== 'FOOL_CARD_POOL').length > 1 },
   ROOM_FULL_OF_CHEESE: { ok: st => st.act < 2 },
   ROUND_TEA_PARTY: { ok: st => st.hp >= 12, needs: 'HP 12+' },
   SLIPPERY_BRIDGE: { ok: st => st.totalFloor > 6 && st.deck.some(c => info(c.id).removable), needs: 'floor 7+' },
@@ -76,7 +83,7 @@ const RULES = {
   WHISPERING_HOLLOW: { ok: st => st.gold >= 44, needs: '44+ gold' },
   WOOD_CARVINGS: { ok: st => st.deck.some(c => info(c.id).rarity === 'Basic' && info(c.id).removable) },
   WUPPY_IN_TROUBLE: { ok: () => true, needs: 'enough HP' },
-  ZEN_WEAVER: { ok: () => true, needs: 'enough gold' },
+  ZEN_WEAVER: { ok: st => st.gold >= 125, needs: '125+ gold' },
 };
 
 function isAllowed(id, st) {
@@ -310,6 +317,292 @@ const PORTS = {
   },
 };
 
+// ── Act 2 events ──────────────────────────────────────────────────────────────
+
+const charPool = ctx => DATA.characters[ctx.character].cardPool;
+// CardCreationOptions.ForNonCombatWithDefaultOdds: regular-fight odds, no upgrade roll.
+const defaultOdds = (pools, filter) => ({ pools, rarityOdds: 'RegularEncounter', source: 'Other', filter, noUpgradeRoll: true });
+const MODIFIER_CURSES = () => DATA.cardPools.CURSE_CARD_POOL
+  .filter(c => !['CARD.ASCENDERS_BANE', 'CARD.BAD_LUCK', 'CARD.CURSE_OF_THE_BELL', 'CARD.ENTHRALLED', 'CARD.FOLLY',
+    'CARD.GREED', 'CARD.POOR_SLEEP', 'CARD.SPORE_MIND'].includes(c.id))
+  .map(c => c.id).sort();
+// ModelId ordering for StableShuffle of relics.
+const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+Object.assign(PORTS, {
+  BUGSLAYER: () => ({
+    options: [
+      { name: 'Extermination', effects: ['Add Exterminate to your deck'] },
+      { name: 'Squash', effects: ['Add Squash to your deck'] },
+    ],
+  }),
+
+  COLORFUL_PHILOSOPHERS: e => {
+    // Other characters' pools in a fixed colour order; random ones removed until 3 remain.
+    const order = ['NECROBINDER_CARD_POOL', 'IRONCLAD_CARD_POOL', 'REGENT_CARD_POOL', 'FOOL_CARD_POOL', 'SILENT_CARD_POOL', 'DEFECT_CARD_POOL'];
+    const unlocked = unlockedCharacterPools(e.st.epochs);
+    const pools = order.filter(p => p !== charPool(e.ctx) && unlocked.includes(p));
+    while (pools.length > Math.min(3, pools.length) || pools.length > 3) pools.splice(e.rng.nextInt(pools.length), 1);
+    return {
+      options: pools.map(pool => {
+        const b = e.branch();
+        // Three card rewards: 3 Commons, 3 Uncommons, 3 Rares (uniform odds, with upgrade rolls).
+        const cards = ['Common', 'Uncommon', 'Rare'].flatMap(r => R.createCardsForReward(b.ctx, 3, {
+          pools: [pool], rarityOdds: 'Uniform', source: 'Other', filter: c => c.rarity === r,
+        }));
+        return { name: fmt(pool).replace('_CARD_POOL', ''), effects: ['Three card rewards from this colour: pick 1 Common, 1 Uncommon, 1 Rare'], cardChoice: cards, shiftsRewards: true };
+      }),
+    };
+  },
+
+  SYMBIOTE: e => {
+    const b = e.branch();
+    return {
+      options: [
+        { name: 'Approach', effects: ['Enchant a card with Corrupted'] },
+        { name: 'Kill with fire', effects: ['Transform a card of your choice'], transforms: transformPreview(b.ctx, b.rng, e.deck) },
+      ],
+    };
+  },
+
+  RELIC_TRADER: e => {
+    // Your tradable relics: StableShuffle (sorted by id, then shuffled) and the first 3 offered;
+    // the 3 new relics come from your relic bag with rarities rolled on the event Rng.
+    const owned = e.rng.stableShuffle(e.st.relics.filter(tradable), byId).slice(0, 3);
+    const fresh = owned.map(() => relicPull(e.ctx, e.rng));
+    return {
+      options: owned.map((r, i) => ({ name: `Trade ${fmt(r)}`, effects: [`Give up ${fmt(r)}`, 'Gain the relic below'], relics: [fresh[i]], shiftsRelicBag: true })),
+    };
+  },
+
+  COLOSSAL_FLOWER: () => ({
+    options: [
+      { name: 'Extract now', effects: ['Gain 35 gold'] },
+      { name: 'Reach deeper once', effects: ['Lose 5 HP', 'Then extract for 75 gold'] },
+      { name: 'Reach deeper twice', effects: ['Lose 5 + 6 HP', 'Then 135 gold, or lose 7 more HP for Pollinous Core'] },
+    ],
+  }),
+
+  RANWID_THE_ELDER: e => {
+    const potion = e.rng.nextItem(e.st.potions);
+    const relic = e.rng.nextItem(e.st.relics.filter(tradable));
+    const p = e.branch(), g = e.branch(), r = e.branch();
+    return {
+      options: [
+        { name: `Give ${fmt(potion)}`, effects: ['Gain the relic below'], relics: [relicPull(p.ctx, p.rng)], shiftsRelicBag: true },
+        { name: 'Give 100 gold', effects: ['Gain the relic below'], relics: [relicPull(g.ctx, g.rng)], shiftsRelicBag: true },
+        { name: `Give ${fmt(relic)}`, effects: ['Gain the 2 relics below'], relics: [relicPull(r.ctx, r.rng), relicPull(r.ctx, r.rng)], shiftsRelicBag: true },
+      ],
+    };
+  },
+
+  WELCOME_TO_WONGOS: e => {
+    // Shop-allowed relics from the front of your relic bag (no rarity roll).
+    const front = rarity => (e.ctx.grabBag[rarity] || []).find(id => DATA.relics?.[id]?.inShops !== false);
+    const upgraded = e.deck.filter(c => c.current_upgrade_level > 0);
+    const downgrade = upgraded.length ? e.rng.nextItem(upgraded) : null;
+    return {
+      options: [
+        { name: 'Bargain bin', effects: ['Pay 100 gold', 'Gain the common relic below'], relics: [front('common')], shiftsRelicBag: true },
+        { name: 'Featured item', effects: ['Pay 200 gold', 'Gain the rare relic below'], relics: [front('rare')], shiftsRelicBag: true },
+        { name: 'Mystery box', effects: ["Pay 300 gold", "Gain Wongo's Mystery Ticket"] },
+        { name: 'Leave', effects: [downgrade ? `${fmt(downgrade.id)} is downgraded` : 'Nothing happens (no upgraded cards)'] },
+      ],
+    };
+  },
+
+  DOLL_ROOM: e => {
+    const dolls = ['RELIC.DAUGHTER_OF_THE_WIND', 'RELIC.MR_STRUGGLES', 'RELIC.BING_BONG'];
+    const a = e.branch(), b = e.branch();
+    return {
+      options: [
+        { name: 'Pick at random', effects: ['Gain the doll below'], relics: [a.rng.nextItem(dolls)] },
+        { name: 'Take some time', effects: ['Lose 5 HP', 'Choose between the 2 dolls below'], relics: b.rng.stableShuffle(dolls.slice(), byId).slice(0, 2) },
+        { name: 'Examine', effects: ['Lose 15 HP', 'Choose any of the 3 dolls'] },
+      ],
+    };
+  },
+
+  AMALGAMATOR: () => ({
+    options: [
+      { name: 'Combine Strikes', effects: ['Remove 2 basic Strikes', 'Add Ultimate Strike'] },
+      { name: 'Combine Defends', effects: ['Remove 2 basic Defends', 'Add Ultimate Defend'] },
+    ],
+  }),
+
+  ZEN_WEAVER: () => ({
+    options: [
+      { name: 'Breathing techniques', effects: ['Pay 25 gold', 'Add Enlightenment'] },
+      { name: 'Emotional awareness', effects: ['Pay 125 gold', 'Remove 1 card'] },
+      { name: 'Arachnid acupuncture', effects: ['Pay 250 gold', 'Remove 2 cards'] },
+    ],
+  }),
+
+  THE_LANTERN_KEY: () => ({
+    options: [
+      { name: 'Return the key', effects: ['Gain 100 gold'] },
+      { name: 'Keep the key', effects: ['Fight the Mysterious Knight', 'Win: normal fight rewards plus the Lantern Key card'], shiftsRewards: true },
+    ],
+  }),
+
+  LOST_WISP: e => {
+    const gold = 60 + e.rng.nextInt(-15, 16);
+    return {
+      options: [
+        { name: 'Claim', effects: ['Gain the Lost Wisp relic', 'Add the curse Decay'] },
+        { name: 'Search', effects: [`Gain ${gold} gold`] },
+      ],
+    };
+  },
+
+  FIELD_OF_MAN_SIZED_HOLES: () => ({
+    options: [
+      { name: 'Resist', effects: ['Remove 2 cards', 'Add the curse Normality'] },
+      { name: 'Enter your hole', effects: ['Enchant a card with Perfect Fit'] },
+    ],
+  }),
+
+  STONE_OF_ALL_TIME: e => {
+    const potion = e.rng.nextItem(e.st.potions);
+    return {
+      options: [
+        { name: 'Lift', effects: [`Drink ${fmt(potion)} (it's discarded)`, 'Gain 10 Max HP'] },
+        { name: 'Push', effects: ['Lose 6 HP', 'Enchant a card with Vigorous 8'] },
+      ],
+    };
+  },
+
+  SPIRIT_GRAFTER: () => ({
+    options: [
+      { name: 'Let it in', effects: ['Heal 25', 'Add Metamorphosis'] },
+      { name: 'Rejection', effects: ['Upgrade a card', 'Lose 10 HP'] },
+    ],
+  }),
+
+  MUSEUM_OF_TORTURE: e => {
+    const relic = e.rng.nextItem(['RELIC.OBSIDIAN_VICE', 'RELIC.THUMBSCREW', 'RELIC.TORMENTOUS_COLLAR']);
+    const curse = e.branch().ctx.rngs.NonCombatGeneration.nextItem(MODIFIER_CURSES());
+    return {
+      options: [
+        { name: 'Take the relic', effects: ['Gain the relic below', `Add the curse ${fmt(curse)}`], relics: [relic] },
+        { name: 'Break out', effects: ['Lose 10 Max HP'] },
+      ],
+    };
+  },
+
+  BRAIN_LEECH: e => {
+    const s = e.branch(), r = e.branch();
+    return {
+      options: [
+        { name: 'Share knowledge', effects: ['Pick 1 of these 5 cards'], cardChoice: R.createCardsForReward(s.ctx, 5, defaultOdds([charPool(s.ctx)])), shiftsRewards: true },
+        { name: 'Rip', effects: ['Lose 5 HP', 'A colorless card reward'], cardChoice: R.createCardsForReward(r.ctx, 3, defaultOdds(['COLORLESS_CARD_POOL'])), shiftsRewards: true },
+      ],
+    };
+  },
+
+  POTION_COURIER: e => {
+    const b = e.branch();
+    const potion = b.ctx.rngs.Rewards.nextItem(R.potionOptions(b.ctx).filter(p => p.rarity === 'Uncommon'));
+    return {
+      options: [
+        { name: 'Grab potions', effects: ['Gain 3 Foul Potions'] },
+        { name: 'Ransack', effects: ['Gain the potion below'], potions: [potion], shiftsRewards: true },
+      ],
+    };
+  },
+
+  INFESTED_AUTOMATON: e => {
+    const s = e.branch(), t = e.branch();
+    return {
+      options: [
+        { name: 'Study', effects: ['Add this Power'], cardChoice: R.createCardsForReward(s.ctx, 1, defaultOdds([charPool(s.ctx)], c => c.type === 'Power')), shiftsRewards: true },
+        { name: 'Touch the core', effects: ['Add this 0-cost card'], cardChoice: R.createCardsForReward(t.ctx, 1, defaultOdds([charPool(t.ctx)], c => c.cost === 0)), shiftsRewards: true },
+      ],
+    };
+  },
+
+  CRYSTAL_SPHERE: e => {
+    const cost = 50 + e.rng.nextInt(1, 50);
+    return {
+      options: [
+        { name: 'Uncover the future', effects: [`Pay ${cost} gold`, 'Play the sphere minigame (3 picks)'] },
+        { name: 'Payment plan', effects: ['Add the curse Debt', 'Play the sphere minigame (6 picks)'] },
+      ],
+    };
+  },
+
+  FAKE_MERCHANT: e => {
+    const fakes = ['ANCHOR', 'BLOOD_VIAL', 'HAPPY_FLOWER', 'LEES_WAFFLE', 'MANGO', 'ORICHALCUM', 'SNECKO_EYE', 'STRIKE_DUMMY', 'VENERABLE_TEA_SET']
+      .map(x => 'RELIC.FAKE_' + x);
+    const stock = e.rng.unstableShuffle(fakes).slice(0, 6);
+    return {
+      options: [
+        { name: 'Browse', effects: ['Sells these fake relics (~50 gold each)', 'Their prices use the Shops stream: real shop forecasts after this shift'], relics: stock },
+        { name: 'Throw a Foul Potion', effects: ['Fight the merchant'], shiftsRewards: true },
+      ],
+    };
+  },
+});
+
+// ── Ancients ──────────────────────────────────────────────────────────────────
+
+// What each ancient relic does when you take it (from its AfterObtained); passive ones
+// just point at the tooltip. None of these use the Rewards stream on pickup.
+const ANCIENT_RELIC_EFFECTS = {
+  PAELS_HORN: ['Add 2 Relax'],
+  PAELS_CLAW: ['Enchant every eligible card with Goopy'],
+  PAELS_TOOTH: ['Remove up to 5 upgradable cards (kept by the relic)'],
+  PAELS_GROWTH: ['Enchant a card with Clone 4'],
+  PAELS_WING: ['Card rewards gain a Sacrifice option; every 2nd sacrifice gives a relic (uses the Rewards stream)'],
+  BLOOD_SOAKED_ROSE: ['Add the curse Enthralled'],
+  PRESERVED_FOG: ['Remove 3 cards', 'Add the curse Folly'],
+  SERE_TALON: ['Lose 9 Max HP', 'Add 3 Wish'],
+  DISTINGUISHED_CAPE: ['Add 2 random curses (below)', 'Add 3 Apparition'],
+};
+
+const ANCIENTS = {
+  PAEL: e => {
+    const deck = e.deck;
+    const pool1 = ['PAELS_FLESH', 'PAELS_HORN', 'PAELS_TEARS'];
+    let pool2 = ['PAELS_WING'];
+    // Claw needs 3+ Goopy-enchantable cards (approximated as 3+ cards); Tooth needs 5+ removable.
+    if (deck.length >= 3) pool2.push('PAELS_CLAW');
+    if (deck.filter(c => info(c.id).removable).length >= 5) pool2.push('PAELS_TOOTH');
+    pool2 = [...pool2, ...pool2, 'PAELS_GROWTH']; // AddRange(itself): Growth has half the weight
+    const pool3 = ['PAELS_EYE', 'PAELS_BLOOD', 'PAELS_LEGION'];
+    return [e.rng.nextItem(pool1), e.rng.nextItem(pool2), e.rng.nextItem(pool3)];
+  },
+  VAKUU: e => [
+    e.rng.nextItem(['BLOOD_SOAKED_ROSE', 'WHISPERING_EARRING', 'FIDDLE']),
+    e.rng.nextItem(['PRESERVED_FOG', 'SERE_TALON', 'DISTINGUISHED_CAPE']),
+    e.rng.nextItem(['CHOICES_PARADOX', 'MUSIC_BOX', 'LORDS_PARASOL', 'JEWELED_MASK']),
+  ],
+};
+
+// An act's Ancient (not Neow, which lib/rewards.js handles): its 3 relic offers.
+function forecastAncient(ancientId, ctx, st) {
+  const entry = ancientId.replace(/^EVENT\./, '');
+  const pick = ANCIENTS[entry];
+  if (!pick) return { id: ancientId, modelled: false };
+  const rng = new Rng((ctx.runSeed + 0n + xxHash64(entry)) & MASK64);
+  const e = { rng, ctx: R.cloneCtx(ctx), st, deck: st.deck };
+  const offers = pick(e);
+  return {
+    id: ancientId, modelled: true,
+    options: offers.map(r => {
+      const effects = (ANCIENT_RELIC_EFFECTS[r] || ['Passive relic (see the in-game tooltip)']).slice();
+      let cards;
+      if (r === 'DISTINGUISHED_CAPE') {
+        const nc = R.cloneCtx(ctx).rngs.NonCombatGeneration;
+        const curses = MODIFIER_CURSES();
+        const a = nc.nextItem(curses); curses.splice(curses.indexOf(a), 1);
+        effects[0] = `Add the curses ${fmt(a)} and ${fmt(nc.nextItem(curses))}`;
+      }
+      return { name: fmt('RELIC.' + r), relics: ['RELIC.' + r], effects, cards };
+    }),
+  };
+}
+
 // ── Report ────────────────────────────────────────────────────────────────────
 
 function eventState(save) {
@@ -322,6 +615,8 @@ function eventState(save) {
     gold: p.gold ?? 0, hp: p.current_hp ?? 0, maxHp: p.max_hp ?? 0,
     potions, potionModels: potions.map(id => potionInfo[id] || { id, rarity: 'Common' }),
     deck: p.deck || [],
+    relics: (p.relics || []).map(r => r.id),
+    epochs: new Set(p.unlock_state?.unlocked_epochs || []),
     totalFloor: (save.map_point_history || []).flat().length + 1,
   };
 }
@@ -341,4 +636,4 @@ function forecastEvent(eventId, ctx, st) {
   return { id: eventId, modelled: true, ...port(e) };
 }
 
-module.exports = { isAllowed, needs, forecastEvent, eventState, transformPreview, PORTS, RULES };
+module.exports = { isAllowed, needs, forecastEvent, forecastAncient, eventState, transformPreview, PORTS, RULES, ANCIENTS };

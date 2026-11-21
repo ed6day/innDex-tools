@@ -62,6 +62,32 @@ test('transforms never return the same card and stay in the pool', () => {
   }
 });
 
+// Ancient offers recorded in real runs (single player, game v0.113).
+const ANCIENT_OBSERVED = [
+  ['2HZ7UB0D8KD2', 'EVENT.PAEL', ['PAELS_BLOOD', 'PAELS_GROWTH', 'PAELS_TEARS']],
+  ['TKWP7T17CUDL', 'EVENT.VAKUU', ['CHOICES_PARADOX', 'FIDDLE', 'PRESERVED_FOG']],
+  ['7ULLQN4CLKM8', 'EVENT.VAKUU', ['BLOOD_SOAKED_ROSE', 'LORDS_PARASOL', 'SERE_TALON']],
+];
+
+for (const [seed, id, offers] of ANCIENT_OBSERVED) {
+  test(`${id} on ${seed} offers what the game offered`, () => {
+    const f = E.forecastAncient(id, ctxFor(seed), st);
+    assert.deepEqual(f.options.map(o => o.relics[0].replace('RELIC.', '')).sort(), offers);
+  });
+}
+
+test('act 2 event forecasts run for every ported event', () => {
+  const ctx = ctxFor('2HZ7UB0D8KD2');
+  const act2 = { ...st, act: 1, gold: 300, potions: ['POTION.FIRE_POTION', 'POTION.SWIFT_POTION'],
+    potionModels: [{ id: 'POTION.FIRE_POTION', rarity: 'Common' }, { id: 'POTION.SWIFT_POTION', rarity: 'Common' }],
+    relics: ['RELIC.VAJRA', 'RELIC.BAG_OF_MARBLES', 'RELIC.ORNAMENTAL_FAN', 'RELIC.JOSS_PAPER', 'RELIC.PERMAFROST'],
+    epochs: new Set(DATA.epochs) };
+  for (const id of Object.keys(E.PORTS)) {
+    const f = E.forecastEvent('EVENT.' + id, ctx, act2);
+    assert.ok(f.options.length > 0, id);
+  }
+});
+
 test('eligibility rules', () => {
   assert.equal(E.isAllowed('EVENT.STONE_OF_ALL_TIME', st), false, 'act 2 only');
   assert.equal(E.isAllowed('EVENT.WHISPERING_HOLLOW', { ...st, gold: 43 }), false);

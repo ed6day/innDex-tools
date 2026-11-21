@@ -56,7 +56,7 @@ function roomsFor(save, actIndex) {
   const rooms = save.acts[actIndex].rooms;
   return {
     normal: rooms.normal_encounter_ids, elite: rooms.elite_encounter_ids, events: rooms.event_ids,
-    boss: rooms.boss_id, secondBoss: rooms.second_boss_id || null,
+    boss: rooms.boss_id, secondBoss: rooms.second_boss_id || null, ancient: rooms.ancient_id,
     normalVisited: rooms.normal_encounters_visited || 0, eliteVisited: rooms.elite_encounters_visited || 0,
     eventsVisited: rooms.events_visited || 0, bossVisited: rooms.boss_encounters_visited || 0,
   };
@@ -142,10 +142,12 @@ function visit(st, node, nextTypes) {
   if (roomType === 'Monster' || roomType === 'Elite' || roomType === 'Boss') {
     Object.assign(step, fight(st, roomType));
   } else if (node.type === 'ancient') {
-    // The act's Ancient counts as a visited event; its offers aren't modelled (except Neow).
+    // The act's Ancient counts as a visited event. Modelled ancients' relics don't touch the
+    // Rewards stream on pickup, so forecasts after them stay exact.
     st.rooms.eventsVisited++;
-    step.ancient = true;
-    if (st.uncertainFrom == null) { st.uncertainFrom = step.node; step.mayShiftRewards = true; }
+    step.ancient = st.rooms.ancient;
+    step.ancientForecast = E.forecastAncient(st.rooms.ancient, st.ctx, st.evState);
+    if (!step.ancientForecast.modelled && st.uncertainFrom == null) { st.uncertainFrom = step.node; step.mayShiftRewards = true; }
   } else if (roomType === 'Event') {
     step.event = pullEvent(st);
     step.eventForecast = E.forecastEvent(step.event, st.ctx, st.evState);
@@ -237,6 +239,9 @@ function lookahead(save, count = 8, actIndex = save.current_act_index ?? 0) {
   return {
     act: actIndex, isCurrent: actIndex === cur,
     ancient: save.acts[actIndex].rooms.ancient_id,
+    // Shown while the Ancient is still ahead (future acts, or standing on it now).
+    ancientForecast: actIndex !== cur || ((save.map_point_history || [])[actIndex] || []).length === 0
+      ? E.forecastAncient(save.acts[actIndex].rooms.ancient_id, st.ctx, st.evState) : null,
     normals: take(r.normal, r.normalVisited, count),
     elites: take(r.elite, r.eliteVisited, Math.min(count, 4)),
     boss: r.boss, secondBoss: r.secondBoss,

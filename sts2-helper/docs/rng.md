@@ -142,6 +142,25 @@ builds 0.109 and later, every recorded This or That, Sunken Statue and Dense Veg
 amount matches when that gold option was taken. Builds before 0.109 seeded events
 differently.
 
+### Act 2 events and ancients
+
+Every event that can appear in act 2 is also ported (Colorful Philosophers, Relic Trader, Ranwid,
+Wongo's, Doll Room, Lost Wisp, Brain Leech, Infested Automaton, and the rest). Relic
+tradability, shop eligibility and card energy costs come from the game via the data export.
+
+Each act's Ancient (Pael, Vakuu) offers one relic from each of three pools, drawn on its own
+event RNG. Pael doubles its second pool before adding Pael's Growth, so Growth has half the
+weight. None of their relics use the Rewards stream when picked up, so forecasts after them
+stay exact. Distinguished Cape's two curses come from NonCombatGeneration.
+
+Validated against run histories: Pael's offers matched 39 of 41 runs (the 2 misses come from a
+deck-dependent pool that is approximated). Vakuu matched 7 of 7 on game v0.113; older builds
+used different pools. Lost Wisp's gold matched 14 of 14 and Doll Room's random doll 3 of 3. In
+the live run, Pael, Vakuu and the Cape's curses (Writhe + Guilty) all matched.
+
+Not modelled yet: the other Ancients (Darv, Orobas, Tanx, Tezcatara, Nonupeipe) and act 3's
+events.
+
 ## Why the save file matters
 
 `current_run.save` stores every stream's live state (`counter`, `s0..s3`) and the `?` odds.

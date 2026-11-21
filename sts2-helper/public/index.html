@@ -1112,7 +1112,7 @@ function renderRoute(res, gap) {
   }
   document.getElementById('routeMeta').textContent = `${res.steps.length} rooms` + (res.includesCurrent ? ' (incl. current)' : '');
   panel.innerHTML = gapNote + res.steps.map((st, i) => {
-    const title = st.ancient ? 'Ancient (act start)' : st.encounter ? (st.roomType === 'Boss' ? 'BOSS: ' : '') + prettyEnc(st.encounter) : st.event ? pretty(st.event) : st.roomType === 'RestSite' ? 'Rest site'
+    const title = st.ancient ? `Ancient: ${pretty(st.ancient)}` : st.encounter ? (st.roomType === 'Boss' ? 'BOSS: ' : '') + prettyEnc(st.encounter) : st.event ? pretty(st.event) : st.roomType === 'RestSite' ? 'Rest site'
       : st.roomType === 'Treasure' ? 'Treasure' : st.roomType === 'Shop' ? `Shop #${st.shopIndex}` : st.roomType;
     const via = st.mapType === 'unknown' ? ` <span class="sub" style="display:inline">(? \u2192 ${st.roomType}, roll ${st.unknownRoll.toFixed(3)})</span>` : '';
     let body = '';
@@ -1124,7 +1124,9 @@ function renderRoute(res, gap) {
     if (st.stealsGold) body += '<div class="flag">Can steal gold: if it does, getting it back adds a gold reward that shifts later fights by one draw.</div>';
     if (st.uncertain) body += '<div class="flag">Assumes the earlier event didn\'t use the Rewards stream.</div>';
     const n = st.fightIndex ? `fight ${st.fightIndex}` : '';
-    if (st.ancient) body += '<div class="eff">The Ancient\'s offers aren\'t modelled yet; picks that give cards, potions or relics shift later forecasts.</div>';
+    if (st.ancient) body += st.ancientForecast && st.ancientForecast.modelled
+      ? '<div class="sub">Offers (pick 1)</div>' + eventForecastHtml(st.ancientForecast)
+      : '<div class="eff">This Ancient\'s offers aren\'t modelled yet; picks that give cards, potions or relics shift later forecasts.</div>';
     return `<div class="step${st.uncertain ? ' uncertain' : ''}${st.roomType === 'Boss' ? ' boss' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
   }).join('<div style="height:6px"></div>');
 }
@@ -1136,7 +1138,7 @@ function renderLookahead(L) {
       <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li>${esc(prettyEnc(e))}</li>`)}
         <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)">${esc(prettyEnc(e))}</li>`)}
         <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}${L.secondBoss ? ` then ${esc(prettyEnc(L.secondBoss))}` : ''}</div>
-        ${L.isCurrent ? '' : `<div class="sec-hdr">Ancient at the start</div><div style="font-size:12px;">${esc(pretty(L.ancient))}</div>`}</div>
+        ${L.ancientForecast ? `<div class="sec-hdr">Ancient: ${esc(pretty(L.ancient))} (pick 1)</div>${eventForecastHtml(L.ancientForecast)}` : ''}</div>
       <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li><details class="ev"><summary>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}${e.needs ? ` <span class="eff">(${esc(e.needs)})</span>` : ''}</summary>${eventForecastHtml(e.forecast)}</details></li>`)}
         <div class="note"><span style="color:var(--warn)">\u2022</span> can hand out rewards (shifts later card forecasts)</div></div>
     </div>

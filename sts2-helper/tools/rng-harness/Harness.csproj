@@ -4,6 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- lib/mapgen.js builds into out/; keep its generated files out of the compile -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);out/**</DefaultItemExcludes>
     <!-- Override with -p:Sts2DataDir=... if Steam lives elsewhere -->
     <Sts2DataDir Condition="'$(Sts2DataDir)' == ''">C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64</Sts2DataDir>
   </PropertyGroup>

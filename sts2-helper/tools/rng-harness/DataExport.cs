@@ -49,6 +49,7 @@ public static class DataExport
                 type = c.Type.ToString(),
                 mp = c.MultiplayerConstraint.ToString(),
                 upgradable = c.IsUpgradable,
+                cost = Safe(() => c.EnergyCost.CostsX ? -1 : (int)c.EnergyCost.Canonical, -2),
                 removable = Safe(() => c.IsRemovable, true),
                 transformable = Safe(() => c.IsTransformable, true),
                 gates = gates.TryGetValue(c.Id.ToString(), out var g) ? g : null, // null = never unlocked here
@@ -67,11 +68,18 @@ public static class DataExport
             }).ToList();
         }
 
+        var relics = ModelDb.AllRelics.ToDictionary(r => r.Id.ToString(), r => new
+        {
+            rarity = r.Rarity.ToString(),
+            tradable = Safe(() => r.IsTradable, false),
+            inShops = Safe(() => r.IsAllowedInShops, true),
+        });
+
         var characters = ModelDb.AllCharacters.ToDictionary(
             c => c.Id.ToString(),
             c => new { cardPool = c.CardPool.Id.Entry, potionPool = c.PotionPool.Id.Entry });
 
-        Console.WriteLine(JsonSerializer.Serialize(new { epochs = allEpochs, characters, cardPools, potionPools },
+        Console.WriteLine(JsonSerializer.Serialize(new { epochs = allEpochs, characters, cardPools, potionPools, relics },
             new JsonSerializerOptions { WriteIndented = false }));
     }
 }
