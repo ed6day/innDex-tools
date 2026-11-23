@@ -1,33 +1,3 @@
 @echo off
-title STS2 Helper
-
-cd /d "%~dp0"
-
-where node >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Node.js not found. Install from https://nodejs.org/
-    pause
-    exit /b 1
-)
-
-where git >nul 2>&1
-if not errorlevel 1 (
-    echo Pulling latest updates...
-    git -C "%~dp0.." pull origin claude/slay-spire-decision-helper-ifMXo 2>&1
-)
-
-if not exist node_modules (
-    echo Installing dependencies...
-    call npm install
-    if errorlevel 1 ( echo Install failed. & pause & exit /b 1 )
-)
-
-echo.
-echo  STS2 Helper starting on http://localhost:3000
-echo  Opening dashboard in browser...
-echo  Press Ctrl+C to stop.
-echo.
-
-start "" "http://localhost:3000"
-node server.js
-pause
+rem Kept for existing shortcuts: same as "STS2 Helper.cmd".
+call "%~dp0STS2 Helper.cmd" %*
