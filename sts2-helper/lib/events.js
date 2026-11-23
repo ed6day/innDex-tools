@@ -74,7 +74,8 @@ const RULES = {
   TEA_MASTER: { ok: st => st.act < 2 && st.gold >= 150, needs: '150+ gold' },
   THE_FUTURE_OF_POTIONS: { ok: st => st.potions.length >= 2, needs: '2+ potions' },
   THE_LEGENDS_WERE_TRUE: { ok: st => st.act === 0 && st.deck.length > 0 && st.hp >= 10, needs: 'HP 10+' },
-  THERMAE_NONUPEIPE: { ok: st => st.gold > 175 && st.hp <= st.maxHp * 0.75, needs: '176+ gold, HP ≤ 75%' },
+  THERMAE_NONUPEIPE: { ok: st => st.gold > 175 && st.hp <= st.maxHp * 0.75 && st.ancient !== 'EVENT.NONUPEIPE', needs: '176+ gold, HP ≤ 75%' },
+  SHRINE_OF_THE_WARLORD: { ok: st => st.ancient !== 'EVENT.TANX' },
   TRASH_HEAP: { ok: st => st.hp > 5, needs: 'HP 6+' },
   UNREST_SITE: { ok: st => st.hp <= st.maxHp * 0.7, needs: 'HP ≤ 70%' },
   WAR_HISTORIAN_REPY: { ok: () => false },
@@ -544,10 +545,280 @@ Object.assign(PORTS, {
   },
 });
 
+// ── Act 3 events ──────────────────────────────────────────────────────────────
+
+// Nonupeipe's relic list (Thermae Nonupeipe's "drink" relic comes from it, minus Looming Fruit).
+const NONUPEIPE_POOL = ['BLESSED_ANTLER', 'BRILLIANT_SCARF', 'DELICATE_FROND', 'DIAMOND_DIADEM', 'FUR_COAT', 'GLITTER',
+  'JEWELRY_BOX', 'LOOMING_FRUIT', 'SIGNET_RING'];
+
+// Deck cards with upgrade levels, for events that upgrade/downgrade at random.
+const levels = deck => deck.map(c => ({ id: c.id, lvl: c.current_upgrade_level || 0 }));
+const upgradable = c => info(c.id).upgradable && c.lvl === 0;
+
+Object.assign(PORTS, {
+  TRIAL: e => {
+    // Accepting rolls which defendant you judge.
+    const which = e.rng.nextInt(3);
+    const a = e.branch(), b = e.branch();
+    if (which === 0) {
+      return { options: [
+        { name: 'Accept: the Merchant — Guilty', effects: ['Add the curse Regret', 'Gain the 2 relics below'], relics: [relicPull(a.ctx, a.rng), relicPull(a.ctx, a.rng)], shiftsRelicBag: true },
+        { name: 'Accept: the Merchant — Innocent', effects: ['Add the curse Shame', 'Upgrade 2 cards'] },
+        { name: 'Reject', effects: ['Then accept anyway, or double down (lose the run)'] },
+      ] };
+    }
+    if (which === 1) {
+      return { options: [
+        { name: 'Accept: the Noble — Guilty', effects: ['Heal 10'] },
+        { name: 'Accept: the Noble — Innocent', effects: ['Add the curse Regret', 'Gain 300 gold'] },
+        { name: 'Reject', effects: ['Then accept anyway, or double down (lose the run)'] },
+      ] };
+    }
+    return { options: [
+      { name: 'Accept: the Nondescript — Guilty', effects: ['Add the curse Doubt', 'Two card rewards'],
+        cardChoice: R.createCardsForReward(a.ctx, 6, defaultOdds([charPool(a.ctx)])), shiftsRewards: true },
+      { name: 'Accept: the Nondescript — Innocent', effects: ['Add the curse Doubt', 'Transform 2 cards of your choice (first pick shown)'],
+        transforms: transformPreview(b.ctx, b.rng, e.deck) },
+      { name: 'Reject', effects: ['Then accept anyway, or double down (lose the run)'] },
+    ] };
+  },
+
+  ROUND_TEA_PARTY: e => {
+    const f = e.branch();
+    return {
+      options: [
+        { name: 'Enjoy the tea', effects: ['Gain Royal Poison', 'Heal to full'] },
+        { name: 'Pick a fight', effects: ['Lose 11 HP', 'Gain the relic below'], relics: [relicPull(f.ctx, f.rng)], shiftsRelicBag: true },
+      ],
+    };
+  },
+
+  REFLECTIONS: e => {
+    // Downgrade 2 random upgraded cards, then upgrade 4 random upgradable ones (deck order).
+    const deck = levels(e.deck);
+    const down = [];
+    const upgraded = deck.filter(c => c.lvl > 0);
+    for (let i = 0; i < 2 && upgraded.length; i++) {
+      const c = e.rng.nextItem(upgraded);
+      upgraded.splice(upgraded.indexOf(c), 1);
+      c.lvl--; down.push(c.id);
+    }
+    const ups = [];
+    const pool = deck.filter(upgradable);
+    for (let i = 0; i < 4 && pool.length; i++) {
+      const c = e.rng.nextItem(pool);
+      pool.splice(pool.indexOf(c), 1);
+      ups.push(c.id);
+    }
+    return {
+      options: [
+        { name: 'Touch a mirror', effects: [
+          down.length ? `Downgrade ${down.map(fmt).join(', ')}` : 'No upgraded cards to downgrade',
+          `Upgrade ${ups.map(fmt).join(', ') || 'nothing'}`] },
+        { name: 'Shatter', effects: ['Duplicate every card in your deck', 'Add the curse Bad Luck'] },
+      ],
+    };
+  },
+
+  HUNGRY_FOR_MUSHROOMS: () => ({
+    options: [
+      { name: 'Big Mushroom', effects: ['Gain Big Mushroom'] },
+      { name: 'Fragrant Mushroom', effects: ['Lose 15 HP', 'Gain Fragrant Mushroom'] },
+    ],
+  }),
+
+  BATTLEWORN_DUMMY: e => {
+    const p = e.branch(), u = e.branch(), r = e.branch();
+    const potion = p.ctx.rngs.Rewards.nextItem(R.potionOptions(p.ctx));
+    const ups = u.rng.stableShuffle(levels(e.deck).filter(upgradable), (a, b) => byId(a.id, b.id)).slice(0, 2);
+    return {
+      options: [
+        { name: 'Setting 1', effects: ['Fight the dummy; beat it in time for the potion below'], potions: [potion], shiftsRewards: true },
+        { name: 'Setting 2', effects: [`Fight the dummy; beat it in time to upgrade ${ups.map(c => fmt(c.id)).join(' and ')}`] },
+        { name: 'Setting 3', effects: ['Fight the dummy; beat it in time for the relic below'], relics: [relicPull(r.ctx, r.rng)], shiftsRelicBag: true },
+      ],
+    };
+  },
+
+  TINKER_TIME: e => ({
+    // Pick a card type for Mad Science, then 2 of that type's 3 riders are offered.
+    options: [['Attack', ['Sapping', 'Violence', 'Choking']], ['Skill', ['Energized', 'Wisdom', 'Chaos']], ['Power', ['Expertise', 'Curious', 'Improvement']]]
+      .map(([type, riders]) => {
+        const b = e.branch();
+        const offered = b.rng.unstableShuffle(riders.slice()).slice(0, 2);
+        return { name: `${type} Mad Science`, effects: [`Choose a rider: ${offered.join(' or ')}`] };
+      }),
+  }),
+
+  SHRINE_OF_THE_WARLORD: () => ({
+    options: [
+      { name: 'Take the weapon', effects: ['Add Mighty Weapon'] },
+      { name: 'Take the shield', effects: ['Add Mighty Shield'] },
+      { name: 'Take the wings', effects: ['Gain Mighty Wings', 'Add the curse Clumsy'] },
+    ],
+  }),
+
+  THERMAE_NONUPEIPE: e => {
+    const drink = e.rng.nextItem([...NONUPEIPE_POOL, 'BEAUTIFUL_BRACELET'].filter(r => r !== 'LOOMING_FRUIT'));
+    return {
+      options: [
+        { name: 'Thermal baths', effects: ['Pay 88 gold', 'Gain Bath Towel'] },
+        { name: 'Private oasis', effects: ['Pay all your gold', 'Gain Bath Robes'] },
+        { name: 'Drink the waters', effects: ['Lose 31 HP', 'Add 3 Guilty', 'Gain the relic below'], relics: ['RELIC.' + drink] },
+      ],
+    };
+  },
+
+  GRAVE_OF_THE_FORGOTTEN: () => ({
+    options: [
+      { name: 'Confront', effects: ['Add the curse Decay', "Enchant a card with Soul's Power"] },
+      { name: 'Accept', effects: ['Gain Forgotten Soul'] },
+    ],
+  }),
+});
+
+// ── Underdocks (alternative act 1) events ─────────────────────────────────────
+
+Object.assign(PORTS, {
+  WUPPY_IN_TROUBLE: e => {
+    const b = e.branch();
+    const potion = b.ctx.rngs.Rewards.nextItem(R.potionOptions(b.ctx));
+    return {
+      options: [
+        { name: 'Help immediately', effects: ['Add the curse Injury', 'Gain Wuppy (60 HP)'] },
+        { name: 'Be cautious', effects: [`Lose ${Math.trunc(e.st.hp * 0.05)} HP (5%)`, 'Gain Wuppy (30 HP)'] },
+        { name: 'Ignore', effects: ['Gain the potion below'], potions: [potion], shiftsRewards: true },
+      ],
+    };
+  },
+
+  WATERFALL_OF_OBVIOUS_SECRETS: e => {
+    const n = e.branch(), b = e.branch();
+    return {
+      options: [
+        { name: 'Be nice', effects: ['Add Dingy Dagger'] },
+        { name: 'Beat them up', effects: ['Gain the relic below', 'Add 2 Guilty'], relics: [relicPull(b.ctx, b.rng)], shiftsRelicBag: true },
+        { name: 'Negotiate', effects: ['Pay 70 gold', 'Add this rare'], shiftsRewards: true,
+          cardChoice: R.createCardsForReward(n.ctx, 1, { pools: [charPool(n.ctx)], rarityOdds: 'Uniform', source: 'Other', filter: c => c.rarity === 'Rare', noUpgradeRoll: true }) },
+      ],
+    };
+  },
+
+  PUNCH_OFF: e => {
+    e.rng.nextInt(91, 99); // CalculateVars rolls a gold value
+    const nab = e.branch();
+    return {
+      options: [
+        { name: 'Nab it', effects: ['Add the curse Injury', 'A relic reward (below)'], relics: [R.pullRelicForReward(nab.ctx)], shiftsRewards: true },
+        { name: 'I can take them', effects: ['Fight both brawlers', 'Win: a relic, a potion and normal fight rewards'], shiftsRewards: true },
+      ],
+    };
+  },
+
+  SPIRALING_WHIRLPOOL: e => ({
+    options: [
+      { name: 'Observe the spiral', effects: ['Enchant a card with Spiral'] },
+      { name: 'Drink', effects: [`Heal ${Math.trunc(e.st.maxHp * 0.33)}`] },
+    ],
+  }),
+
+  DROWNING_BEACON: () => ({
+    options: [
+      { name: 'Bottle the light', effects: ['Gain Glowwater Potion'] },
+      { name: 'Climb', effects: ['Lose 13 Max HP', 'Gain Fresnel Lens'] },
+    ],
+  }),
+
+  TRASH_HEAP: e => {
+    const d = e.branch(), g = e.branch();
+    const relics = ['DARKSTONE_PERIAPT', 'DREAM_CATCHER', 'HAND_DRILL', 'MAW_BANK', 'THE_BOOT'];
+    const cards = ['CALTROPS', 'CLASH', 'DISTRACTION', 'DUAL_WIELD', 'ENTRENCH', 'HELLO_WORLD', 'OUTMANEUVER', 'REBOUND', 'RIP_AND_TEAR', 'STACK'];
+    return {
+      options: [
+        { name: 'Dive in', effects: ['Lose 8 HP', 'Gain the relic below'], relics: ['RELIC.' + d.rng.nextItem(relics)] },
+        { name: 'Grab', effects: ['Gain 100 gold', 'Add the card below'], cardChoice: [{ id: 'CARD.' + g.rng.nextItem(cards), rarity: 'Uncommon' }] },
+      ],
+    };
+  },
+
+  DOORS_OF_LIGHT_AND_DARK: () => ({
+    options: [
+      { name: 'Light', effects: ['Upgrade a card'] },
+      { name: 'Dark', effects: ['Remove a card'] },
+    ],
+  }),
+
+  WATERLOGGED_SCRIPTORIUM: () => ({
+    options: [
+      { name: 'Bloody ink', effects: ['Gain 6 Max HP'] },
+      { name: 'Tentacle quill', effects: ['Pay 55 gold', 'Enchant a card with Steady'] },
+      { name: 'Prickly sponge', effects: ['Pay 120 gold', 'Enchant 2 cards with Steady'] },
+    ],
+  }),
+
+  ABYSSAL_BATHS: () => ({
+    options: [
+      { name: 'Immerse', effects: ['Gain 2 Max HP, take 3 damage; each linger after takes 1 more damage'] },
+      { name: 'Abstain', effects: ['Heal 10'] },
+    ],
+  }),
+
+  SUNKEN_TREASURY: e => {
+    const small = 60 + e.rng.nextInt(16) - 8;
+    const large = 333 + e.rng.nextInt(61) - 30;
+    return {
+      options: [
+        { name: 'Small chest', effects: [`Gain ${small} gold`] },
+        { name: 'Large chest', effects: [`Gain ${large} gold`, 'Add the curse Greed'] },
+      ],
+    };
+  },
+
+  ENDLESS_CONVEYOR: e => {
+    // Dishes roll on the event Rng; some dishes use it too before the next roll.
+    const dishes = [];
+    let grabs = 0, last = null;
+    const openSlot = e.st.potions.length < (e.st.maxPotionSlots ?? 3);
+    const hurt = e.st.hp < e.st.maxHp;
+    const upgradableCards = levels(e.deck).filter(upgradable);
+    const roll = () => {
+      grabs++;
+      if (grabs % 5 === 0) { last = 'SEAPUNK_SALAD'; return last; }
+      let list = [['CAVIAR', 6], ['SPICY_SNAPPY', 3], ['JELLY_LIVER', 3], ['FRIED_EEL', 3]];
+      if (openSlot) list.push(['SUSPICIOUS_CONDIMENT', 3]);
+      if (hurt) list.push(['CLAM_ROLL', 6]);
+      if (grabs > 1) list.push(['GOLDEN_FYSH', 1]);
+      list = list.filter(([id]) => id !== last);
+      const total = list.reduce((s, [, w]) => Math.fround(s + w), 0);
+      const r = Math.fround(e.rng.nextFloat() * total);
+      let acc = 0;
+      for (const [id, w] of list) { acc = Math.fround(acc + w); if (r < acc) { last = id; return id; } }
+      return last;
+    };
+    const names = { CAVIAR: 'Caviar (+4 Max HP)', SPICY_SNAPPY: 'Spicy Snappy (upgrade a random card)', JELLY_LIVER: 'Jelly Liver (transform a card)',
+      FRIED_EEL: 'Fried Eel (a colorless card)', SUSPICIOUS_CONDIMENT: 'Suspicious Condiment (a potion)', CLAM_ROLL: 'Clam Roll (heal 10)',
+      GOLDEN_FYSH: 'Golden Fysh (free, +75 gold)', SEAPUNK_SALAD: 'Seapunk Salad (Feeding Frenzy)' };
+    let dish = roll();
+    for (let i = 0; i < 6; i++) {
+      dishes.push(names[dish] || dish);
+      // Dish effects that draw from the event Rng before the next dish is rolled.
+      if (dish === 'SPICY_SNAPPY' && upgradableCards.length) e.rng.nextItem(upgradableCards);
+      if (dish === 'JELLY_LIVER') e.rng.nextInt(1); // the transform picks from that card's options
+      dish = roll();
+    }
+    return {
+      options: [
+        { name: 'Grab dishes (40 gold each, except Golden Fysh)', effects: dishes.map((d, i) => `${i + 1}. ${d}`) },
+        { name: 'Observe the chef', effects: ['Upgrade a random card'] },
+      ],
+    };
+  },
+});
+
 // ── Ancients ──────────────────────────────────────────────────────────────────
 
 // What each ancient relic does when you take it (from its AfterObtained); passive ones
-// just point at the tooltip. None of these use the Rewards stream on pickup.
+// just point at the tooltip.
 const ANCIENT_RELIC_EFFECTS = {
   PAELS_HORN: ['Add 2 Relax'],
   PAELS_CLAW: ['Enchant every eligible card with Goopy'],
@@ -558,47 +829,151 @@ const ANCIENT_RELIC_EFFECTS = {
   PRESERVED_FOG: ['Remove 3 cards', 'Add the curse Folly'],
   SERE_TALON: ['Lose 9 Max HP', 'Add 3 Wish'],
   DISTINGUISHED_CAPE: ['Add 2 random curses (below)', 'Add 3 Apparition'],
+  ASTROLABE: ['Transform 3 cards of your choice (Transformations stream)'],
+  PANDORAS_BOX: ['Transform every Strike and Defend (Transformations stream)'],
+  EMPTY_CAGE: ['Remove 2 cards'],
+  ALCHEMICAL_COFFER: ['Gain random potions (NonCombatGeneration stream)'],
+  SAND_CASTLE: ['Random effect from the NonCombatGeneration stream'],
+  TOY_BOX: ['Gain 5 relics (rarity rolls on the Rewards stream)'],
 };
 
+// Darv: one relic per eligible set (each draw uses the event Rng even for 1-relic sets).
+const DARV_SETS = [
+  ['ASTROLABE'], ['BLACK_STAR'], ['CALLING_BELL'], ['EMPTY_CAGE'], ['PANDORAS_BOX'], ['RUNIC_PYRAMID'], ['SNECKO_EYE'],
+  ['ECTOPLASM', st => st.act === 1], ['SOZU', st => st.act === 1],
+  ['PHILOSOPHERS_STONE', st => st.act >= 1], ['VELVET_CHOKER', st => st.act >= 1],
+];
+// ArchaicTooth.TranscendenceUpgrades values: excluded from Dusty Tome's card.
+const TRANSCENDENCE = new Set(['CARD.BREAK', 'CARD.SUPPRESS', 'CARD.PROTECTOR', 'CARD.METEOR_SHOWER', 'CARD.QUADCAST']);
+const CHARACTER_EPOCH = { 'CHARACTER.SILENT': 'SILENT1_EPOCH', 'CHARACTER.REGENT': 'REGENT1_EPOCH',
+  'CHARACTER.NECROBINDER': 'NECROBINDER1_EPOCH', 'CHARACTER.DEFECT': 'DEFECT1_EPOCH', 'CHARACTER.FOOL': 'FOOL1_EPOCH' };
+// EnchantmentModel.CanEnchant: playable Attack/Skill/Power cards without another enchantment,
+// plus each enchantment's own filter (Instinct: Attacks; Goopy: Defends).
+const enchantable = (deck, filter = () => true) => deck.filter(c => {
+  const t = info(c.id).type;
+  return ['Attack', 'Skill', 'Power'].includes(t) && !c.enchantment && filter(c, t);
+}).length;
+
+// RelicLists.notAllowedInBlitz (RelicModel.IsAllowed is false for these in Blitz runs).
+const NOT_IN_BLITZ = new Set(['AMETHYST_AUBERGINE', 'BLACK_STAR', 'BOOK_OF_FIVE_RINGS', 'BOWLER_HAT', 'CURSED_PEARL', 'DOWSING_ROD',
+  'DRAGON_FRUIT', 'DREAM_CATCHER', 'DRIFTWOOD', 'ECTOPLASM', 'ETERNAL_FEATHER', 'FISHING_ROD', 'FUR_COAT', 'GIRYA', 'GOLDEN_COMPASS',
+  'GOLDEN_PEARL', 'JUZU_BRACELET', 'LASTING_CANDY', 'LORDS_PARASOL', 'LUCKY_FYSH', 'MAW_BANK', 'MEAL_TICKET', 'MEAT_CLEAVER',
+  'MEMBERSHIP_CARD', 'MINIATURE_TENT', 'OLD_COIN', 'PAELS_CLAW', 'PAELS_GROWTH', 'PAELS_WING', 'PLANISPHERE', 'PRAYER_WHEEL',
+  'PUMPKIN_CANDLE', 'REGAL_PILLOW', 'SEAL_OF_GOLD', 'SHOVEL', 'SIGNET_RING', 'SILKEN_TRESS', 'STONE_HUMIDIFIER', 'THE_COURIER',
+  'TINY_MAILBOX', 'TOY_BOX', 'VENERABLE_TEA_SET', 'WHITE_BEAST_STATUE', 'WINGED_BOOTS']);
+const allowedRelics = (e, list) => list.filter(r => !(e.st.gameMode === 'blitz' && NOT_IN_BLITZ.has(r)));
+
+// AncientEventModel.GetOptionsFromThreePools: one allowed pick per pool; if a pool has none,
+// fill up to 3 from everything not yet picked.
+function threePools(e, p1, p2, p3) {
+  const choose = pool => { const a = allowedRelics(e, pool); return a.length ? e.rng.nextItem(a) : null; };
+  const picks = [choose(p1), choose(p2), choose(p3)].filter(Boolean);
+  if (picks.length < 3) {
+    const rest = [...p1, ...p2, ...p3];
+    for (const p of picks) rest.splice(rest.indexOf(p), 1);
+    while (picks.length < 3) {
+      const c = choose(rest);
+      if (!c) break;
+      picks.push(c);
+      rest.splice(rest.indexOf(c), 1);
+    }
+  }
+  return picks;
+}
+
+// Each returns relic entries (without the RELIC. prefix). `e.live` carries generation-time
+// side effects (Dusty Tome's card is drawn from Rewards when it's offered).
 const ANCIENTS = {
   PAEL: e => {
     const deck = e.deck;
     const pool1 = ['PAELS_FLESH', 'PAELS_HORN', 'PAELS_TEARS'];
     let pool2 = ['PAELS_WING'];
-    // Claw needs 3+ Goopy-enchantable cards (approximated as 3+ cards); Tooth needs 5+ removable.
-    if (deck.length >= 3) pool2.push('PAELS_CLAW');
+    // Claw needs 3+ Goopy-enchantable (Defend) cards; Tooth needs 5+ removable.
+    if (enchantable(deck, c => /^CARD\.DEFEND_/.test(c.id)) >= 3) pool2.push('PAELS_CLAW');
     if (deck.filter(c => info(c.id).removable).length >= 5) pool2.push('PAELS_TOOTH');
     pool2 = [...pool2, ...pool2, 'PAELS_GROWTH']; // AddRange(itself): Growth has half the weight
     const pool3 = ['PAELS_EYE', 'PAELS_BLOOD', 'PAELS_LEGION'];
-    return [e.rng.nextItem(pool1), e.rng.nextItem(pool2), e.rng.nextItem(pool3)];
+    return threePools(e, pool1, pool2, pool3);
   },
-  VAKUU: e => [
-    e.rng.nextItem(['BLOOD_SOAKED_ROSE', 'WHISPERING_EARRING', 'FIDDLE']),
-    e.rng.nextItem(['PRESERVED_FOG', 'SERE_TALON', 'DISTINGUISHED_CAPE']),
-    e.rng.nextItem(['CHOICES_PARADOX', 'MUSIC_BOX', 'LORDS_PARASOL', 'JEWELED_MASK']),
-  ],
+  VAKUU: e => threePools(e, ['BLOOD_SOAKED_ROSE', 'WHISPERING_EARRING', 'FIDDLE'],
+    ['PRESERVED_FOG', 'SERE_TALON', 'DISTINGUISHED_CAPE'], ['CHOICES_PARADOX', 'MUSIC_BOX', 'LORDS_PARASOL', 'JEWELED_MASK']),
+  DARV: e => {
+    const picks = allowedRelics(e, DARV_SETS.filter(([, ok]) => !ok || ok(e.st)).map(([r]) => e.rng.nextItem([r])));
+    const shuffled = e.rng.unstableShuffle(picks);
+    if (e.rng.nextBool()) {
+      // Dusty Tome: DustyTome.SetupForPlayer draws its Ancient card from Rewards now.
+      const ancients = R.unlockedCards(e.ctx, charPool(e.ctx)).filter(c => c.rarity === 'Ancient' && !TRANSCENDENCE.has(c.id));
+      e.dustyTomeCard = e.live.rngs.Rewards.nextItem(ancients)?.id;
+      return [...shuffled.slice(0, 2), ...allowedRelics(e, ['DUSTY_TOME'])];
+    }
+    return shuffled.slice(0, 3);
+  },
+  OROBAS: e => {
+    const others = Object.keys(DATA.characters)
+      .filter(c => c !== e.ctx.character && (!CHARACTER_EPOCH[c] || e.st.epochs.has(CHARACTER_EPOCH[c])));
+    const character = e.rng.nextItem(others) || e.ctx.character;
+    const third = e.rng.nextFloat() < Math.fround(0.3333333) ? 'PRISMATIC_GEM' : 'SEA_GLASS';
+    e.seaGlassCharacter = character;
+    // Touch of Orobas / Archaic Tooth need a matching starter relic / card; assumed available.
+    return threePools(e, ['ELECTRIC_SHRYMP', 'GLASS_EYE', third],
+      ['ALCHEMICAL_COFFER', 'DRIFTWOOD', 'RADIANT_PEARL', 'SAND_CASTLE'], ['TOUCH_OF_OROBAS', 'ARCHAIC_TOOTH']);
+  },
+  TANX: e => {
+    const list = ['CLAWS', 'CROSSBOW', 'IRON_CLUB', 'MEAT_CLEAVER', 'SAI', 'SPIKED_GAUNTLETS', 'TANXS_WHISTLE', 'THROWING_AXE', 'WAR_HAMMER'];
+    // Tri-Boomerang needs 3+ Instinct-enchantable cards (Attacks).
+    if (enchantable(e.deck, (c, t) => t === 'Attack') >= 3) list.push('TRI_BOOMERANG');
+    return e.rng.unstableShuffle(allowedRelics(e, list)).slice(0, 3);
+  },
+  TEZCATARA: e => {
+    const pool1 = ['VERY_HOT_COCOA', 'YUMMY_COOKIE'];
+    if (e.deck.some(c => /^CARD\.STRIKE_/.test(c.id) && info(c.id).rarity === 'Basic')) pool1.push('NUTRITIOUS_SOUP');
+    return threePools(e, pool1, ['BIIIG_HUG', 'STORYBOOK', 'TOASTY_MITTENS'], ['GOLDEN_COMPASS', 'PUMPKIN_CANDLE', 'TOY_BOX', 'SEAL_OF_GOLD']);
+  },
+  NONUPEIPE: e => {
+    const list = NONUPEIPE_POOL.slice();
+    // Beautiful Bracelet needs 4+ Swift-enchantable cards.
+    if (enchantable(e.deck) >= 4) list.push('BEAUTIFUL_BRACELET');
+    return e.rng.unstableShuffle(allowedRelics(e, list)).slice(0, 3);
+  },
 };
 
 // An act's Ancient (not Neow, which lib/rewards.js handles): its 3 relic offers.
-function forecastAncient(ancientId, ctx, st) {
+// `live`: a context to apply offer-time side effects to (route simulation); defaults to a clone.
+function forecastAncient(ancientId, ctx, st, live = R.cloneCtx(ctx)) {
   const entry = ancientId.replace(/^EVENT\./, '');
   const pick = ANCIENTS[entry];
   if (!pick) return { id: ancientId, modelled: false };
   const rng = new Rng((ctx.runSeed + 0n + xxHash64(entry)) & MASK64);
-  const e = { rng, ctx: R.cloneCtx(ctx), st, deck: st.deck };
+  const e = { rng, ctx: R.cloneCtx(ctx), st, deck: st.deck, live };
   const offers = pick(e);
+  // Choices are alternatives: each one's pickup is computed from the state after the offers.
+  const after = R.cloneCtx(live);
   return {
     id: ancientId, modelled: true,
     options: offers.map(r => {
       const effects = (ANCIENT_RELIC_EFFECTS[r] || ['Passive relic (see the in-game tooltip)']).slice();
-      let cards;
+      const o = { name: fmt('RELIC.' + r), relics: ['RELIC.' + r], effects };
+      const b = R.cloneCtx(after);
       if (r === 'DISTINGUISHED_CAPE') {
-        const nc = R.cloneCtx(ctx).rngs.NonCombatGeneration;
+        const nc = b.rngs.NonCombatGeneration;
         const curses = MODIFIER_CURSES();
         const a = nc.nextItem(curses); curses.splice(curses.indexOf(a), 1);
         effects[0] = `Add the curses ${fmt(a)} and ${fmt(nc.nextItem(curses))}`;
+      } else if (r === 'DUSTY_TOME') {
+        effects.splice(0, effects.length, `Its Ancient card: ${fmt(e.dustyTomeCard) || 'none'}`);
+      } else if (r === 'SEA_GLASS') {
+        // 5 Commons, 5 Uncommons, 5 Rares from that character's pool (uniform, no upgrades).
+        const pool = DATA.characters[e.seaGlassCharacter].cardPool;
+        effects.splice(0, effects.length, `Pick any of these ${fmt(e.seaGlassCharacter)} cards`);
+        o.cardChoice = ['Common', 'Uncommon', 'Rare'].flatMap(rar => R.createCardsForReward(b, 5,
+          { pools: [pool], rarityOdds: 'Uniform', source: 'Other', filter: c => c.rarity === rar, noUpgradeRoll: true }));
+        o.shiftsRewards = true;
+      } else if (r === 'TOY_BOX') {
+        o.relics = ['RELIC.TOY_BOX', ...Array.from({ length: 5 }, () => R.pullRelicForReward(b)).filter(Boolean)];
+        effects.splice(0, effects.length, 'Gain Toy Box and the 5 relics below');
+        o.shiftsRewards = true;
       }
-      return { name: fmt('RELIC.' + r), relics: ['RELIC.' + r], effects, cards };
+      return o;
     }),
   };
 }
@@ -616,6 +991,9 @@ function eventState(save) {
     potions, potionModels: potions.map(id => potionInfo[id] || { id, rarity: 'Common' }),
     deck: p.deck || [],
     relics: (p.relics || []).map(r => r.id),
+    ancient: save.acts?.[save.current_act_index ?? 0]?.rooms?.ancient_id,
+    gameMode: save.game_mode || 'standard',
+    maxPotionSlots: p.max_potion_slot_count ?? 3,
     epochs: new Set(p.unlock_state?.unlocked_epochs || []),
     totalFloor: (save.map_point_history || []).flat().length + 1,
   };

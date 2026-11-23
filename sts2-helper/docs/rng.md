@@ -158,8 +158,38 @@ deck-dependent pool that is approximated). Vakuu matched 7 of 7 on game v0.113; 
 used different pools. Lost Wisp's gold matched 14 of 14 and Doll Room's random doll 3 of 3. In
 the live run, Pael, Vakuu and the Cape's curses (Writhe + Guilty) all matched.
 
-Not modelled yet: the other Ancients (Darv, Orobas, Tanx, Tezcatara, Nonupeipe) and act 3's
-events.
+### Act 3, Underdocks and all Ancients
+
+Every event in act 3 (Glory) and the alternative act 1 (Underdocks) is ported too: Trial,
+Reflections, Battleworn Dummy, Tinker Time, Thermae, Endless Conveyor (the full dish
+sequence), Trash Heap, Sunken Treasury and the rest. All seven Ancients are modelled: Pael,
+Vakuu, Darv, Orobas, Tanx, Tezcatara and Nonupeipe. Their offers go through the game's exact
+`GetOptionsFromThreePools` (fallback included) and per-relic rules. Blitz bans some relics
+(`RelicLists.notAllowedInBlitz`). Some offers depend on your deck: Swift/Instinct/Goopy
+enchantable counts, basic Strikes and removable cards. Dusty Tome's card is drawn from the
+Rewards stream the moment Darv offers it, so the route simulation applies that draw.
+
+Validated against run histories (v0.113): all 54 recorded Ancient offers match, across all
+seven Ancients and the Standard, Blitz and Dread modes. Trial's defendant matched 9 of 9,
+Trash Heap 7 of 7, and Sunken Treasury 9 of 10 (the miss had a gold-boosting relic).
+
+## Hover cards (lib/assets.js)
+
+Card, relic, potion and fight names on the dashboard show hover cards. The text comes from
+the game's own English text (`localization/eng/*.json`) and card art from the card portraits,
+both read from your installed `SlayTheSpire2.pck` (Godot 4 pack, `lib/pck.js`). Neither is
+copied into the repo. The numbers in the text (base and upgraded) and monster HP come from
+`lib/info.json` (`cd tools/rng-harness && dotnet run -- info`).
+
+Monster pictures: each monster's `scenes/creature_visuals/<id>.tscn` points at its Spine 4.2
+skeleton data (`.skel` + `.atlas` + texture pages), its skin and its idle animation. The
+dashboard draws them with Spine's web player (`@esotericsoftware/spine-player` 4.2.120, served
+locally from node_modules). 105 of 107 monsters resolve; Crusher and Rocket are parts of a
+composite boss. Effects that the game draws with shaders (e.g. Living Fog's gas) don't show.
+**Licence:** the Spine Runtimes licence requires a Spine Editor licence for use; that is the
+user's responsibility.
+
+Not shown yet: relic and potion icons (GPU-compressed BC7 textures).
 
 ## Why the save file matters
 

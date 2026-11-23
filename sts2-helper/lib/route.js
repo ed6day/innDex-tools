@@ -86,7 +86,7 @@ function stateFromSave(save) {
 // Entering a new act: its own room lists; RNG streams and odds carry over.
 function enterAct(st, save, actIndex) {
   st.rooms = roomsFor(save, actIndex);
-  st.evState = { ...st.evState, act: actIndex };
+  st.evState = { ...st.evState, act: actIndex, ancient: st.rooms.ancient };
   st.lastWasShop = false;
 }
 
@@ -146,8 +146,10 @@ function visit(st, node, nextTypes) {
     // Rewards stream on pickup, so forecasts after them stay exact.
     st.rooms.eventsVisited++;
     step.ancient = st.rooms.ancient;
-    step.ancientForecast = E.forecastAncient(st.rooms.ancient, st.ctx, st.evState);
-    if (!step.ancientForecast.modelled && st.uncertainFrom == null) { st.uncertainFrom = step.node; step.mayShiftRewards = true; }
+    // Pass st.ctx as the live context: offer-time draws (Dusty Tome) advance the simulation.
+    step.ancientForecast = E.forecastAncient(st.rooms.ancient, st.ctx, st.evState, st.ctx);
+    const shifts = !step.ancientForecast.modelled || step.ancientForecast.options.some(o => o.shiftsRewards);
+    if (shifts && st.uncertainFrom == null) { st.uncertainFrom = step.node; step.mayShiftRewards = true; }
   } else if (roomType === 'Event') {
     step.event = pullEvent(st);
     step.eventForecast = E.forecastEvent(step.event, st.ctx, st.evState);

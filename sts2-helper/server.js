@@ -9,6 +9,7 @@ const { parseJsonBigSafe, canonicalizeSeed } = require('./lib/rng');
 const { seedReport, saveReport } = require('./lib/predict');
 const { buildMap, simulateRoutes, lookahead } = require('./lib/route');
 const { generateActMap } = require('./lib/mapgen');
+const assets = require('./lib/assets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -311,6 +312,36 @@ app.get('/api/route', async (req, res) => {
     res.json(simulateRoutes(save, clean, maps));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── Hover cards (game text + card art, read from the local game install) ─────
+
+app.get('/api/info/:kind/:id', (req, res) => {
+  try {
+    const data = assets.info(req.params.kind, req.params.id, { upgraded: req.query.upgraded === '1' });
+    if (!data) return res.status(404).json({ error: 'unknown kind' });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/assets/card/:id', (req, res) => {
+  try {
+    const img = assets.cardArt(req.params.id);
+    if (!img) return res.status(404).end();
+    res.set('Cache-Control', 'max-age=86400').type(img.type).send(img.data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Monster skeletons for the Spine web player: skeleton.skel, skeleton.atlas and texture pages.
+app.get('/assets/monster/:id/:file', (req, res) => {
+  try {
+    const f = assets.monsterFile(req.params.id, req.params.file);
+    if (!f || !f.data) return res.status(404).end();
+    res.set('Cache-Control', 'max-age=86400').type(f.type).send(f.data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Spine web player (npm @esotericsoftware/spine-player), served locally.
+app.use('/vendor/spine', express.static(path.join(__dirname, 'node_modules', '@esotericsoftware', 'spine-player', 'dist')));
 
 // ── Save-file watcher ─────────────────────────────────────────────────────────
 // Reads STS2's current_run.save on disk — works without enabling mods in-game.

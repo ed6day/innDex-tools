@@ -63,15 +63,27 @@ test('transforms never return the same card and stay in the pool', () => {
 });
 
 // Ancient offers recorded in real runs (single player, game v0.113).
+// [seed, ancient, offers, act index, game mode]. The test deck (2 Strikes, a Defend, Neutralize,
+// Survivor, Backflip) satisfies the deck conditions these runs had.
 const ANCIENT_OBSERVED = [
-  ['2HZ7UB0D8KD2', 'EVENT.PAEL', ['PAELS_BLOOD', 'PAELS_GROWTH', 'PAELS_TEARS']],
-  ['TKWP7T17CUDL', 'EVENT.VAKUU', ['CHOICES_PARADOX', 'FIDDLE', 'PRESERVED_FOG']],
-  ['7ULLQN4CLKM8', 'EVENT.VAKUU', ['BLOOD_SOAKED_ROSE', 'LORDS_PARASOL', 'SERE_TALON']],
+  ['2HZ7UB0D8KD2', 'EVENT.PAEL', ['PAELS_BLOOD', 'PAELS_GROWTH', 'PAELS_TEARS'], 1],
+  ['TKWP7T17CUDL', 'EVENT.VAKUU', ['CHOICES_PARADOX', 'FIDDLE', 'PRESERVED_FOG'], 2],
+  ['7ULLQN4CLKM8', 'EVENT.VAKUU', ['BLOOD_SOAKED_ROSE', 'LORDS_PARASOL', 'SERE_TALON'], 2],
+  ['TKWP7T17CUDL', 'EVENT.DARV', ['CALLING_BELL', 'EMPTY_CAGE', 'PHILOSOPHERS_STONE'], 1],
+  ['YRURQG8MBNSP', 'EVENT.TANX', ['IRON_CLUB', 'SAI', 'TRI_BOOMERANG'], 2],
+  ['EAP4AFL84C3X', 'EVENT.TEZCATARA', ['NUTRITIOUS_SOUP', 'STORYBOOK', 'TOY_BOX'], 1],
+  // Blitz bans some relics (RelicLists.notAllowedInBlitz), which changes the offers.
+  ['973PUTS7N4D1', 'EVENT.TEZCATARA', ['NUTRITIOUS_SOUP', 'STORYBOOK', 'VERY_HOT_COCOA'], 1, 'blitz'],
 ];
 
-for (const [seed, id, offers] of ANCIENT_OBSERVED) {
+test('Trial on 7ULLQN4CLKM8 judges the Nondescript (from a real run)', () => {
+  const f = E.forecastEvent('EVENT.TRIAL', ctxFor('7ULLQN4CLKM8'), st);
+  assert.match(f.options[0].name, /Nondescript/);
+});
+
+for (const [seed, id, offers, act, gameMode = 'standard'] of ANCIENT_OBSERVED) {
   test(`${id} on ${seed} offers what the game offered`, () => {
-    const f = E.forecastAncient(id, ctxFor(seed), st);
+    const f = E.forecastAncient(id, ctxFor(seed), { ...st, act, gameMode });
     assert.deepEqual(f.options.map(o => o.relics[0].replace('RELIC.', '')).sort(), offers);
   });
 }

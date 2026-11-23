@@ -9,6 +9,7 @@
     "test": "node --test test/rng.test.js test/predict.test.js test/rewards.test.js test/route.test.js test/events.test.js"
   },
   "dependencies": {
+    "@esotericsoftware/spine-player": "4.2.120",
     "better-sqlite3": "^11.0.0",
     "express": "^4.19.2",
     "ws": "^8.18.0"

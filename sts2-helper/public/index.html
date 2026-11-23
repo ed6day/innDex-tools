@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>STS2 Helper</title>
+  <link rel="stylesheet" href="/vendor/spine/spine-player.min.css">
+  <script src="/vendor/spine/iife/spine-player.min.js"></script>
   <style>
     :root {
       --bg:      #0b0d14;
@@ -280,6 +282,26 @@
     details.ev[open] summary::before { content: '\25BE '; }
     .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 10px; color: var(--muted); margin-top: 6px; }
 
+    /* ── Hover cards ── */
+    [data-tip] { cursor: help; text-decoration: underline dotted rgba(124,131,245,.5); text-underline-offset: 3px; }
+    #tip { position: fixed; z-index: 50; width: 260px; pointer-events: none; display: none;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.45); overflow: hidden; }
+    #tip .art { width: 100%; aspect-ratio: 1000/760; object-fit: cover; display: block; background: var(--panel2); }
+    #tip .tb { padding: 9px 11px 11px; }
+    #tip .hd { display: flex; align-items: baseline; gap: 6px; font-weight: 800; font-size: 13px; }
+    #tip .cost { min-width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px;
+      display: inline-flex; align-items: center; justify-content: center; }
+    #tip .meta { font-size: 10px; color: var(--muted); margin: 2px 0 6px; text-transform: uppercase; letter-spacing: .5px; }
+    #tip .txt { font-size: 12px; line-height: 1.5; }
+    #tip .v { font-weight: 700; } #tip .v.up { color: var(--good); }
+    #tip .t-gold { color: var(--warn); } #tip .t-blue { color: var(--def); } #tip .t-red { color: var(--bad); }
+    #tip .t-green { color: var(--good); } #tip .t-purple { color: var(--pow); }
+    #tip .mon { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px; font-size: 12px; }
+    #tip .mon b { font-size: 12px; }
+    #tip .spine { width: 100%; height: 130px; margin: 4px 0; }
+    #tip .spine .spine-player { background: transparent !important; }
+    #tip { width: 300px; } #tip .mon .eff { color: var(--muted); font-size: 11px; }
+
     /* ── Empty state ── */
     .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 6px; color: var(--muted); }
     .empty .big { font-size: 32px; }
@@ -475,6 +497,7 @@
   </div>
 </div>
 
+<div id="tip"></div>
 <script>
 // ── WebSocket ──────────────────────────────────────────────────────────────────
 
@@ -881,12 +904,15 @@ function pretty(id) {
     .map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
 }
 
+// data-tip="kind:ID[:u]" marks anything with a hover card (see the hover section below).
+const tip = (kind, id, upgraded) => id ? ` data-tip="${kind}:${esc(id)}${upgraded ? ':u' : ''}"` : '';
+
 function cardLine(c) {
-  return `<div>${esc(pretty(c.id))}${c.upgraded ? '+' : ''}<span class="rar ${c.rarity}">${c.rarity}</span></div>`;
+  return `<div><span${tip('card', c.id, c.upgraded)}>${esc(pretty(c.id))}${c.upgraded ? '+' : ''}</span><span class="rar ${c.rarity}">${c.rarity}</span></div>`;
 }
 
 function potionLine(p) {
-  return p ? `<div>&#9883; ${esc(pretty(p.id))}${p.rarity ? `<span class="rar ${p.rarity}">${p.rarity}</span>` : ''}</div>` : '';
+  return p ? `<div>&#9883; <span${tip('potion', p.id)}>${esc(pretty(p.id))}</span>${p.rarity ? `<span class="rar ${p.rarity}">${p.rarity}</span>` : ''}</div>` : '';
 }
 
 function neowOutcome(o, effect) {
@@ -894,7 +920,7 @@ function neowOutcome(o, effect) {
   let h = '';
   if (o.cardChoice) h += '<div class="sub">Choose 1 of</div>' + o.cardChoice.map(cardLine).join('');
   if (o.cards) h += '<div class="sub">Adds to deck</div>' + o.cards.map(cardLine).join('');
-  if (o.relics) h += '<div class="sub">Relics</div>' + o.relics.map(r => `<div>${esc(pretty(r))}</div>`).join('');
+  if (o.relics) h += '<div class="sub">Relics</div>' + o.relics.map(r => `<div${tip('relic', r)}>${esc(pretty(r))}</div>`).join('');
   if (o.extraCards && o.extraCards.length) h += '<div class="sub" style="margin-top:4px;">Cards added</div>' + o.extraCards.map(c => `<div>${esc(pretty(c))}</div>`).join('');
   if (o.curses) h += '<div class="sub" style="margin-top:4px;">Curse</div>' + o.curses.map(c => `<div style="color:var(--bad)">${esc(pretty(c))}</div>`).join('');
   if (o.potionSlots) h += `<div class="sub">+${o.potionSlots} potion slot</div>`;
@@ -1071,14 +1097,14 @@ function rewardsBlock(rw) {
   if (!rw) return '';
   return `<div class="sub" style="margin-top:4px;">Card choice</div>${rw.cards.map(cardLine).join('')}
     ${rw.potionDropped ? potionLine(rw.potion) : '<div class="sub">No potion</div>'}
-    ${rw.relic ? `<div>&#9670; ${esc(pretty(rw.relic))}</div>` : ''}`;
+    ${rw.relic ? `<div>&#9670; <span${tip('relic', rw.relic)}>${esc(pretty(rw.relic))}</span></div>` : ''}`;
 }
 
 function shopBlock(sh) {
-  const line = (name, price, extra = '') => `<div>${esc(name)} <span class="sub" style="display:inline">${price}g${extra}</span></div>`;
-  return `<div class="two"><div><div class="sub">Cards</div>${sh.cards.map(c => line(pretty(c.id), c.price, c.onSale ? ' \u2013 sale' : '')).join('')}</div>
-    <div><div class="sub">Relics</div>${sh.relics.map(r => line(pretty(r.id), r.price)).join('')}
-    <div class="sub" style="margin-top:4px;">Potions</div>${sh.potions.map(p => line(pretty(p.id), p.price)).join('')}
+  const line = (kind, id, price, extra = '') => `<div><span${tip(kind, id)}>${esc(pretty(id))}</span> <span class="sub" style="display:inline">${price}g${extra}</span></div>`;
+  return `<div class="two"><div><div class="sub">Cards</div>${sh.cards.map(c => line('card', c.id, c.price, c.onSale ? ' \u2013 sale' : '')).join('')}</div>
+    <div><div class="sub">Relics</div>${sh.relics.map(r => line('relic', r.id, r.price)).join('')}
+    <div class="sub" style="margin-top:4px;">Potions</div>${sh.potions.map(p => line('potion', p.id, p.price)).join('')}
     <div class="sub" style="margin-top:4px;">Card removal ${sh.removalPrice}g</div></div></div>`;
 }
 
@@ -1087,7 +1113,7 @@ function eventForecastHtml(f) {
   if (!f || !f.modelled) return '<div class="eff">Outcomes for this event aren\'t modelled yet.</div>';
   return f.options.map(o => {
     let h = `<div class="evopt"><b>${esc(o.name)}</b> <span class="eff">${o.effects.map(esc).join(' \u00B7 ')}</span>`;
-    if (o.relics) h += o.relics.filter(Boolean).map(r => `<div>&#9670; ${esc(pretty(r))}</div>`).join('');
+    if (o.relics) h += o.relics.filter(Boolean).map(r => `<div>&#9670; <span${tip('relic', r)}>${esc(pretty(r))}</span></div>`).join('');
     if (o.potions) h += o.potions.map(potionLine).join('');
     if (o.cardChoice) h += o.cardChoice.map(cardLine).join('');
     if (o.transforms && o.transforms.length) {
@@ -1117,7 +1143,7 @@ function renderRoute(res, gap) {
     const via = st.mapType === 'unknown' ? ` <span class="sub" style="display:inline">(? \u2192 ${st.roomType}, roll ${st.unknownRoll.toFixed(3)})</span>` : '';
     let body = '';
     if (st.rewards) body += rewardsBlock(st.rewards);
-    if (st.relic) body += `<div>&#9670; ${esc(pretty(st.relic))}</div>`;
+    if (st.relic) body += `<div>&#9670; <span${tip('relic', st.relic)}>${esc(pretty(st.relic))}</span></div>`;
     if (st.shop) body += shopBlock(st.shop);
     if (st.event) body += (st.eventNeeds ? `<div class="eff">Appears only with ${esc(st.eventNeeds)} (judged on your current state)</div>` : '') + eventForecastHtml(st.eventForecast);
     if (st.mayShiftRewards) body += '<div class="flag">Forecasts after this event depend on the option you pick.</div>';
@@ -1127,7 +1153,8 @@ function renderRoute(res, gap) {
     if (st.ancient) body += st.ancientForecast && st.ancientForecast.modelled
       ? '<div class="sub">Offers (pick 1)</div>' + eventForecastHtml(st.ancientForecast)
       : '<div class="eff">This Ancient\'s offers aren\'t modelled yet; picks that give cards, potions or relics shift later forecasts.</div>';
-    return `<div class="step${st.uncertain ? ' uncertain' : ''}${st.roomType === 'Boss' ? ' boss' : ''}"><h4><span class="n">${i + 1}.</span> ${esc(title)}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
+    const titleHtml = st.encounter ? `<span${tip('encounter', st.encounter)}>${esc(title)}</span>` : esc(title);
+    return `<div class="step${st.uncertain ? ' uncertain' : ''}${st.roomType === 'Boss' ? ' boss' : ''}"><h4><span class="n">${i + 1}.</span> ${titleHtml}${via}<span class="n" style="margin-left:auto">${n}</span></h4>${body}</div>`;
   }).join('<div style="height:6px"></div>');
 }
 
@@ -1135,22 +1162,107 @@ function renderLookahead(L) {
   const list = (arr, f) => `<ol style="margin:4px 0 0 18px;line-height:1.7;font-size:12px;">${arr.map(f).join('')}</ol>`;
   document.getElementById('lookaheadPanel').innerHTML = `
     <div class="two">
-      <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li>${esc(prettyEnc(e))}</li>`)}
-        <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)">${esc(prettyEnc(e))}</li>`)}
-        <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)">${esc(prettyEnc(L.boss))}${L.secondBoss ? ` then ${esc(prettyEnc(L.secondBoss))}` : ''}</div>
+      <div><div class="sec-hdr" style="margin-top:0;">Normal fights, in order</div>${list(L.normals, e => `<li><span${tip('encounter', e)}>${esc(prettyEnc(e))}</span></li>`)}
+        <div class="sec-hdr">Elites, in order</div>${list(L.elites, e => `<li style="color:var(--bad)"><span${tip('encounter', e)}>${esc(prettyEnc(e))}</span></li>`)}
+        <div class="sec-hdr">Boss</div><div style="font-size:12px;color:var(--bad)"><span${tip('encounter', L.boss)}>${esc(prettyEnc(L.boss))}</span>${L.secondBoss ? ` then <span${tip('encounter', L.secondBoss)}>${esc(prettyEnc(L.secondBoss))}</span>` : ''}</div>
         ${L.ancientForecast ? `<div class="sec-hdr">Ancient: ${esc(pretty(L.ancient))} (pick 1)</div>${eventForecastHtml(L.ancientForecast)}` : ''}</div>
       <div><div class="sec-hdr" style="margin-top:0;">&ldquo;?&rdquo; events, in order</div>${list(L.events, e => `<li><details class="ev"><summary>${esc(pretty(e.id))}${e.mayShiftRewards ? ' <span style="color:var(--warn)">\u2022</span>' : ''}${e.needs ? ` <span class="eff">(${esc(e.needs)})</span>` : ''}</summary>${eventForecastHtml(e.forecast)}</details></li>`)}
         <div class="note"><span style="color:var(--warn)">\u2022</span> can hand out rewards (shifts later card forecasts)</div></div>
     </div>
     ${L.isCurrent ? '' : '<div class="note">Card rewards and shops for this act depend on what you do before it: plan a route through each act (ending at the boss) to see them.</div>'}
     ${L.isCurrent ? `<div class="sec-hdr">Card rewards if your next fights are all normal fights</div>
-${list(L.normalFightRewards, (f, i) => `<li>${f.cards.map(c => `${esc(pretty(c.id))}<span class="rar ${c.rarity}">${c.rarity[0]}</span>`).join(', ')}${f.potionDropped ? ` + ${esc(pretty(f.potion.id))}` : ''}</li>`)}
+${list(L.normalFightRewards, (f, i) => `<li>${f.cards.map(c => `<span${tip('card', c.id, c.upgraded)}>${esc(pretty(c.id))}</span><span class="rar ${c.rarity}">${c.rarity[0]}</span>`).join(', ')}${f.potionDropped ? ` + ${esc(pretty(f.potion.id))}` : ''}</li>`)}
 <div class="sec-hdr">Next shops (n-th shop you enter)</div>
     ${L.shops.map((sh, i) => `<div class="step" style="margin-bottom:6px;"><h4>Shop #${i + 1}</h4>${shopBlock(sh)}</div>`).join('')}` : ''}
     <div class="note">Fights, events and shops each come from their own fixed list or stream, so the n-th one is known
       regardless of path. Card rewards depend on which rooms you go through (elites, treasure, relic pulls);
       plan a route on the map for exact numbers. Shop card rarities shift slightly with your card-reward luck.</div>`;
 }
+
+// ── Hover cards ─────────────────────────────────────────────────────────────────
+
+const tipCache = new Map();
+let tipFor = null;
+
+function tipHtml(d) {
+  if (!d || d.error) return '<div class="tb"><div class="txt">No details available.</div></div>';
+  if (d.kind === 'encounter') {
+    const mons = d.monsters.map(m => `<div class="mon">${m.spine ? `<div class="spine" data-mon="${esc(m.id)}" data-skin="${esc(m.spine.skin)}" data-anim="${esc(m.spine.animation || '')}"></div>` : ''}<b>${esc(m.name)}</b> <span class="eff">HP ${m.minHp === m.maxHp ? m.minHp : `${m.minHp}\u2013${m.maxHp}`}</span>
+      ${m.moves.length ? `<div class="eff">Moves: ${m.moves.map(esc).join(', ')}</div>` : ''}</div>`).join('');
+    return `<div class="tb"><div class="hd">${esc(d.title)}</div>
+      <div class="meta">${esc(d.roomType)} \u00B7 ${d.gold[0]}\u2013${d.gold[1]} gold</div>${mons}
+      <div class="eff" style="margin-top:6px;font-size:10px;color:var(--muted)">Base HP (Ascension 8+ raises it).</div></div>`;
+  }
+  const cost = d.kind === 'card' && d.cost != null && d.cost >= -1 ? `<span class="cost">${d.cost === -1 ? 'X' : d.cost}</span>` : '';
+  const meta = [d.rarity, d.type, d.kind !== 'card' ? d.kind : ''].filter(Boolean).join(' \u00B7 ');
+  return (d.art ? `<img class="art" src="${d.art}" alt="">` : '') +
+    `<div class="tb"><div class="hd">${cost}${esc(d.title)}</div><div class="meta">${esc(meta)}</div><div class="txt">${d.text || ''}</div></div>`;
+}
+
+async function showTip(el, ev) {
+  const key = el.dataset.tip;
+  const [kind, id, flag] = key.split(':'); // "card:CARD.X:u" (u = upgraded)
+  const up = flag === 'u';
+  tipFor = key;
+  if (!tipCache.has(key)) {
+    tipCache.set(key, fetch(`/api/info/${kind}/${encodeURIComponent(id)}${up ? '?upgraded=1' : ''}`)
+      .then(r => r.json()).catch(() => null));
+  }
+  const data = await tipCache.get(key);
+  if (tipFor !== key) return;
+  const box = document.getElementById('tip');
+  disposeSpines();
+  box.innerHTML = tipHtml(data);
+  box.style.display = 'block';
+  mountSpines(box);
+  placeTip(ev);
+}
+
+// Monster pictures: the game's Spine 4.2 skeletons, drawn by the Spine web player.
+let spinePlayers = [];
+
+function mountSpines(root) {
+  if (!window.spine || !spine.SpinePlayer) return;
+  for (const el of root.querySelectorAll('.spine[data-mon]')) {
+    const id = el.dataset.mon;
+    const skin = /^default$/i.test(el.dataset.skin) ? undefined : el.dataset.skin;
+    try {
+      spinePlayers.push(new spine.SpinePlayer(el, {
+        skeleton: `/assets/monster/${encodeURIComponent(id)}/skeleton.skel`,
+        atlas: `/assets/monster/${encodeURIComponent(id)}/skeleton.atlas`,
+        animation: el.dataset.anim || undefined,
+        skin,
+        showControls: false, showLoading: false, alpha: true, backgroundColor: '#00000000',
+        premultipliedAlpha: false,
+        error: () => { el.style.display = 'none'; },
+      }));
+    } catch { el.style.display = 'none'; }
+  }
+}
+
+function disposeSpines() {
+  for (const p of spinePlayers) { try { p.dispose(); } catch {} }
+  spinePlayers = [];
+}
+
+function placeTip(ev) {
+  const box = document.getElementById('tip');
+  const w = box.offsetWidth, h = box.offsetHeight;
+  let x = ev.clientX + 16, y = ev.clientY + 12;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 16;
+  if (y + h > innerHeight - 8) y = Math.max(8, innerHeight - h - 8);
+  box.style.left = x + 'px'; box.style.top = y + 'px';
+}
+
+document.addEventListener('mouseover', ev => {
+  const el = ev.target.closest('[data-tip]');
+  if (el) showTip(el, ev);
+});
+document.addEventListener('mousemove', ev => { if (tipFor) placeTip(ev); });
+document.addEventListener('mouseout', ev => {
+  const el = ev.target.closest('[data-tip]');
+  if (el && !el.contains(ev.relatedTarget)) { tipFor = null; document.getElementById('tip').style.display = 'none'; disposeSpines(); }
+});
 
 // ── Util ───────────────────────────────────────────────────────────────────────
 
